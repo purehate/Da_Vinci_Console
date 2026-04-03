@@ -45,6 +45,29 @@ icon_for() {
 
 short_path() { [[ "$1" == "$HOME"* ]] && echo "~${1#"$HOME"}" || echo "$1"; }
 
+lang_icon_for() {
+    local d="$1"
+    [[ -f "$d/Cargo.toml" ]]                                                     && echo "" && return
+    [[ -f "$d/package.json" ]]                                                    && echo "" && return
+    [[ -f "$d/go.mod" ]]                                                         && echo "" && return
+    [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" || -f "$d/setup.py" ]] && echo "" && return
+    [[ -f "$d/composer.json" ]]                                                   && echo "" && return
+    [[ -f "$d/pom.xml" || -f "$d/build.gradle" || -f "$d/build.gradle.kts" ]]   && echo "" && return
+    [[ -f "$d/Gemfile" ]]                                                        && echo "" && return
+    [[ -f "$d/CMakeLists.txt" ]]                                                 && echo "" && return
+    echo ""
+}
+
+repo_color() {
+    local repo="$1" d work_dirs="${SESH_WORK_DIRS:-$HOME/DEVELOPMENT}"
+    local IFS=':'
+    for d in $work_dirs; do
+        d="${d/#\~/$HOME}"
+        [[ "$repo" == "$d"* ]] && echo "$C_WORK" && return
+    done
+    echo "$C_PERS"
+}
+
 # ── List builders ────────────────────────────────────────────────────────────
 build_sessions() {
     local first=1
@@ -109,14 +132,19 @@ build_repos() {
     active_sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
 
     find_repos | while IFS= read -r repo; do
-        local icon pshort name
+        local icon lang pshort name color branch branch_str
         icon=$(icon_for "$(basename "$repo")")
+        lang=$(lang_icon_for "$repo")
         pshort=$(short_path "$repo")
         name=$(basename "$repo")
+        color=$(repo_color "$repo")
+        branch=$(git -C "$repo" symbolic-ref --short HEAD 2>/dev/null \
+                 || git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo "")
+        branch_str=$([[ -n "$branch" ]] && echo "  ${C_DIM}${branch}${C_RESET}" || echo "")
         if echo "$active_sessions" | grep -qx "$name" 2>/dev/null; then
-            printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}  ${C_GREEN}●${C_RESET}${SEP}session:${name}\n"
+            printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}${branch_str}  ${C_GREEN}● ${lang}${C_RESET}${SEP}session:${name}\n"
         else
-            printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${repo}\n"
+            printf "${color}${icon:+$icon }${pshort}${C_RESET}${branch_str}  ${C_GREY}${lang}${C_RESET}${SEP}sesh:${repo}\n"
         fi
     done
 }
@@ -146,6 +174,8 @@ build_curdir() {
 }
 
 C_BORDER="\033[38;2;36;176;48m"   # #24b030 — matches fzf border colour
+C_WORK="\033[38;2;100;160;255m"   # steel blue  — work repos
+C_PERS="\033[38;2;180;140;255m"   # soft purple — personal repos
 
 section_sep() {
     printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
@@ -196,6 +226,13 @@ case "${1:-}" in
         name="$(basename "$path")"
         tmux new-session -d -s "$name" -c "$path" 2>/dev/null || true
         tmux switch-client -t "$name" 2>/dev/null
+        exit 0
+        ;;
+    --kill-window)
+        raw="${2:-}"
+        [[ "$raw" == window:* ]] || exit 0
+        rest="${raw#window:}"
+        tmux kill-window -t "${rest%%:*}:${rest#*:}" 2>/dev/null
         exit 0
         ;;
 esac
@@ -251,7 +288,7 @@ fi
 PREVIEW
 
 CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept for ctrl-d kill context
-HEADER="  Enter switch  •  ^N new session  •  ^A all  •  ^J jump  •  ^W windows  •  ^D kill  •  ^/ preview  •  alt-↑↓ scroll"
+HEADER="  Enter switch  •  ^N new session  •  ^X kill win  •  ^D kill session  •  ^A all  •  ^J jump  •  ^W windows  •  ^/ preview  •  alt-↑↓ scroll"
 
 selected=$(build_all | fzf \
     --ansi \
@@ -283,6 +320,7 @@ selected=$(build_all | fzf \
     --bind 'alt-down:preview-down' \
     --bind "enter:transform:[[ {-1} == sep: || {-1} == skip: ]] && echo 'reload(bash $SELF --list-all)+change-list-label()' || echo 'accept'" \
     --bind "ctrl-n:execute-silent(bash '$SELF' --new-session {-1})+abort" \
+    --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload(bash '$SELF' --list-all)" \
     --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label()" \
     --bind "ctrl-j:reload(bash '$SELF' --list-jump)+change-list-label(  Jump )" \
     --bind "ctrl-w:reload(bash '$SELF' --list-windows)+change-list-label(  Windows )" \
