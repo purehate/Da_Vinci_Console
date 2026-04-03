@@ -270,8 +270,6 @@ selected=$(build_all | fzf \
     --input-label='  Search ' \
     --input-label-pos=2 \
     --list-border=rounded \
-    --list-label='  All ' \
-    --list-label-pos=2 \
     --preview-border=rounded \
     --preview-label='  Preview ' \
     --preview-label-pos=2 \
@@ -283,12 +281,12 @@ selected=$(build_all | fzf \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
-    --bind "enter:transform:[[ {-1} == sep: || {-1} == skip: ]] && echo 'reload(bash $SELF --list-all)+change-list-label(  All )' || echo 'accept'" \
+    --bind "enter:transform:[[ {-1} == sep: || {-1} == skip: ]] && echo 'reload(bash $SELF --list-all)+change-list-label()' || echo 'accept'" \
     --bind "ctrl-n:execute-silent(bash '$SELF' --new-session {-1})+abort" \
-    --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label(  All )" \
+    --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label()" \
     --bind "ctrl-j:reload(bash '$SELF' --list-jump)+change-list-label(  Jump )" \
     --bind "ctrl-w:reload(bash '$SELF' --list-windows)+change-list-label(  Windows )" \
-    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload(bash '$SELF' --list-all)+change-list-label(  All )" \
+    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload(bash '$SELF' --list-all)+change-list-label()" \
     --preview-window 'right:50%' \
     --preview "$PREVIEW_CMD" \
 )
