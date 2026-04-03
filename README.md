@@ -2,6 +2,8 @@
 
 A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) — with live pane previews, window-tree navigation, and one-key project jumping via zoxide.
 
+![Da Vinci Console screenshot](assets/screenshot.png)
+
 ---
 
 ## Features
