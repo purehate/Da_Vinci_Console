@@ -145,8 +145,10 @@ build_curdir() {
         done
 }
 
+C_BORDER="\033[38;2;36;176;48m"   # #24b030 — matches fzf border colour
+
 section_sep() {
-    printf "${C_DIM}── ${C_GREY}${1}${C_DIM} $(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
+    printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
 }
 
 session_div() {
