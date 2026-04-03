@@ -43,42 +43,47 @@ icon_for() {
     esac
 }
 
-short_path() { echo "${1/#$HOME/~}"; }
+short_path() { [[ "$1" == "$HOME"* ]] && echo "~${1#"$HOME"}" || echo "$1"; }
 
 # ── List builders ────────────────────────────────────────────────────────────
 build_sessions() {
-    tmux list-sessions -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}" 2>/dev/null \
-      | sort -t'|' -k3,3r -k1,1 \
-      | while IFS='|' read -r sname wins att; do
-            local icon wlabel att_mark
-            icon=$(icon_for "$sname")
-            wlabel=$([[ "$wins" == "1" ]] && echo "1 window" || echo "${wins} windows")
-            att_mark=$([[ "$att" == "1" ]] && echo " ${C_GREEN}●${C_RESET}" || echo "")
-            printf "${C_BRIGHT}${icon:+$icon }${sname}${C_RESET}  ${C_GREY}${wlabel}${C_RESET}${att_mark}${SEP}session:${sname}\n"
+    local first=1
+    while IFS='|' read -r sname wins att; do
+        local icon wlabel att_mark
+        [[ "$first" == "1" ]] && first=0 || session_div
+        icon=$(icon_for "$sname")
+        wlabel=$([[ "$wins" == "1" ]] && echo "1 window" || echo "${wins} windows")
+        att_mark=$([[ "$att" == "1" ]] && echo " ${C_GREEN}●${C_RESET}" || echo "")
+        printf "${C_BRIGHT}${icon:+$icon }${sname}${C_RESET}  ${C_GREY}${wlabel}${C_RESET}${att_mark}${SEP}session:${sname}\n"
 
-            tmux list-windows -t "$sname" \
-              -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null \
-              | while IFS='|' read -r widx wname wcmd wactive wpath; do
-                    local wicon pshort mark
-                    wicon=$(icon_for "$wcmd"); [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
-                    pshort=$(short_path "$wpath")
-                    mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}✦${C_RESET}" || echo "")
-                    printf "  ${C_DIM}╰─${C_RESET} ${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
-                done
-        done
-}
-
-build_windows() {
-    tmux list-windows -a \
-      -F "#{session_name}|#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null \
-      | sort -t'|' -k1,1 -k2,2n \
-      | while IFS='|' read -r sname widx wname wcmd wactive wpath; do
+        while IFS='|' read -r widx wname wcmd wactive wpath; do
             local wicon pshort mark
             wicon=$(icon_for "$wcmd"); [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
             pshort=$(short_path "$wpath")
             mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}✦${C_RESET}" || echo "")
-            printf "${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
-        done
+            printf "  ${C_DIM}╰─${C_RESET} ${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
+        done < <(tmux list-windows -t "$sname" \
+          -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null)
+    done < <(tmux list-sessions -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}" 2>/dev/null \
+      | sort -t'|' -k3,3r -k1,1)
+}
+
+build_windows() {
+    local cur_sess=""
+    while IFS='|' read -r sname widx wname wcmd wactive wpath; do
+        if [[ "$sname" != "$cur_sess" ]]; then
+            [[ -n "$cur_sess" ]] && session_div
+            section_sep " $sname"
+            cur_sess="$sname"
+        fi
+        local wicon pshort mark
+        wicon=$(icon_for "$wcmd"); [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
+        pshort=$(short_path "$wpath")
+        mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}✦${C_RESET}" || echo "")
+        printf "${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
+    done < <(tmux list-windows -a \
+      -F "#{session_name}|#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null \
+      | sort -t'|' -k1,1 -k2,2n)
 }
 
 find_repos() {
@@ -141,7 +146,11 @@ build_curdir() {
 }
 
 section_sep() {
-    printf "${C_DIM}  ${1}$(printf '─%.0s' {1..55})${C_RESET}${SEP}sep:\n"
+    printf "${C_DIM}── ${C_GREY}${1}${C_DIM} $(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
+}
+
+session_div() {
+    printf "${C_DIM}   $(printf '╌%.0s' {1..58})${C_RESET}${SEP}sep:\n"
 }
 
 build_all() {
@@ -154,17 +163,15 @@ build_all() {
 }
 
 build_jump() {
-    local _seen=""
-
+    section_sep " Configured"
     "$SESH" list -c -z 2>/dev/null | while IFS= read -r name; do
         local icon pshort
         icon=$(icon_for "$(basename "$name")")
         pshort=$(short_path "$name")
         printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${name}\n"
-        _seen="${_seen}${name}"$'\n'
     done
 
-    # Augment with zoxide frecency-ranked dirs (skip dupes already listed by sesh)
+    section_sep " Frecent  (zoxide)"
     zoxide query -l 2>/dev/null | while IFS= read -r name; do
         local icon pshort
         icon=$(icon_for "$(basename "$name")")
