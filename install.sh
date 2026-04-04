@@ -5,17 +5,28 @@ set -euo pipefail
 DEST="${1:-$HOME/.config/tmux}"
 SRC="da-vinci-console.sh"
 INSTALLED="sesh_picker.sh"
+LIB_SRC="lib"
 
 if [[ ! -f "$SRC" ]]; then
     echo "Error: run this from the repo root (da-vinci-console.sh not found)" >&2
     exit 1
 fi
 
+if [[ ! -d "$LIB_SRC/dvc" ]]; then
+    echo "Error: run this from the repo root (lib/dvc not found)" >&2
+    exit 1
+fi
+
 mkdir -p "$DEST"
 cp "$SRC" "$DEST/$INSTALLED"
 chmod +x "$DEST/$INSTALLED"
+mkdir -p "$DEST/lib"
+rm -rf "$DEST/lib/dvc"
+cp -R "$LIB_SRC/dvc" "$DEST/lib/"
+find "$DEST/lib/dvc" -type f -name '*.sh' -exec chmod +x {} +
 
 echo "✓ Installed: $DEST/$INSTALLED"
+echo "✓ Installed runtime libs: $DEST/lib/dvc"
 echo ""
 
 # ── Detect shell and rc file ─────────────────────────────────────────────────
