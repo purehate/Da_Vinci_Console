@@ -1,6 +1,6 @@
 # 󰔎 Da Vinci Console
 
-A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) — three sections in one view: live sessions & windows, auto-discovered git repos, and current directory. Git previews, smart dedup, language icons, and one-key project jumping.
+A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) — three sections in one unified view: live sessions & windows, auto-discovered git repos, and current directory. No mode switching, no extra keybinds — just one popup that shows everything.
 
 ![Da Vinci Console screenshot](assets/screenshot.png)
 
@@ -8,20 +8,20 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 
 ## Features
 
-- **Three-section unified view** — Sessions & Windows, Repos, and Current Dir all visible at once, no mode switching needed
-- **Auto-discovered repos** — scans `~/` for git repos automatically; pin specific dirs via `SESH_REPO_DIRS`
+- **Three-section unified view** — Sessions & Windows, Repos, and Current Dir all visible at once
+- **Auto-discovered repos** — scans `~/` up to 3 levels deep for git repos automatically; pin specific dirs via `SESH_REPO_DIRS`
 - **Git branch inline** — current branch shown next to every repo entry
 - **Language icons** — detects Rust, Node, Go, Python, PHP, Java, Ruby, C++ by manifest file
 - **Color-coded repos** — work dirs (blue) vs personal dirs (purple), configurable via `SESH_WORK_DIRS`
-- **Smart dedup** — repos already open as sessions show `●` in green and switch directly to the existing session
-- **Git preview** — branch, dirty status, last 8 commits, and onefetch stats in the preview pane
-- **Live pane previews** — see the last 20 lines of any session or window without switching
-- **`Ctrl-N` new session** — create a named tmux session at any repo path and jump straight to it
+- **Smart dedup** — repos already open as sessions show `●` in green and switch directly to the existing session instead of opening a duplicate
+- **Git preview** — branch, dirty status, last 8 commits, and optional onefetch stats in the preview pane
+- **Live pane previews** — see the last 20 lines of any active session or window without switching to it
+- **`Ctrl-N` new session** — create a named tmux session at the selected repo path and jump straight to it
 - **`Ctrl-X` kill window** — kill individual windows without leaving the picker
 - **`Ctrl-D` kill session** — delete sessions on the fly
 - **Jump mode** (`Ctrl-J`) — sesh configured dirs + zoxide frecency, split into labelled sections
 - **Windows view** (`Ctrl-W`) — all windows across all sessions grouped by session
-- **Shell-aware installer** — detects bash/zsh/fish and shows the right config syntax
+- **Shell-aware installer** — detects bash/zsh/fish and shows the right config snippet
 - **Nerd Font icons** — matched by session name, window name, and running command
 
 ---
@@ -38,7 +38,7 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 
 **Optional:** [onefetch](https://github.com/o2sh/onefetch) — adds rich repo stats to the git preview pane.
 
-> **fzf 0.58+ is required.** The bordered input/list/preview panel labels were introduced in that release. Earlier versions will error.
+> **fzf 0.58+ is required.** Bordered input/list/preview panel labels were introduced in that release. Earlier versions will error.
 
 ---
 
@@ -50,7 +50,7 @@ cd Da_Vinci_Console
 ./install.sh
 ```
 
-The installer detects your shell (bash/zsh/fish), shows the correct tmux bind snippet, and checks all dependencies.
+The installer copies `da-vinci-console.sh` to `~/.config/tmux/sesh_picker.sh`, detects your shell (bash/zsh/fish), shows the correct env snippet, and checks all dependencies.
 
 ---
 
@@ -88,9 +88,9 @@ Or see [`extras/tmux.conf`](extras/tmux.conf) for the full snippet. Invoke with 
 
 ### Repo directories
 
-Without any config, the picker auto-scans `~/` up to 3 levels deep for git repos, skipping hidden dirs, `node_modules`, `.venv`, `vendor`, `target`, etc.
+Without any config the picker auto-scans `~/` up to 3 levels deep for git repos, skipping hidden dirs, `node_modules`, `.venv`, `vendor`, `target`, `__pycache__`, `dist`, and `build`.
 
-To pin specific directories (faster, explicit):
+To pin specific directories (faster, more explicit):
 
 ```bash
 # bash / zsh — add to ~/.bashrc or ~/.zshrc
@@ -100,56 +100,38 @@ export SESH_REPO_DIRS="~/DEVELOPMENT:~/work:~/personal"
 set -gx SESH_REPO_DIRS "$HOME/DEVELOPMENT:$HOME/work:$HOME/personal"
 ```
 
+Multiple paths are colon-separated. Tilde is expanded automatically.
+
 ### Work vs personal colour
 
-Repos under work dirs render in blue; everything else in purple. Default work dir is `~/DEVELOPMENT`.
+Repos found under work dirs render in **blue**; everything else renders in **purple**. The default work dir is `~/DEVELOPMENT`.
 
 ```bash
+# bash / zsh
 export SESH_WORK_DIRS="~/DEVELOPMENT:~/client-work"
-```
 
-### Theming
-
-| Variable           | Default              | Description                           |
-| ------------------ | -------------------- | ------------------------------------- |
-| `DVC_COLOR_ACTIVE` | `#14E21A`            | Active indicator, highlights, pointer |
-| `DVC_COLOR_BORDER` | `#24b030`            | Border and label colour               |
-| `DVC_COLOR_DIM`    | `#333333`            | Dim separator lines                   |
-| `DVC_TITLE`        | `󰔎 Da Vinci Console` | Border label text                     |
-
-#### Catppuccin Mocha
-
-```bash
-export DVC_COLOR_ACTIVE="#a6e3a1"
-export DVC_COLOR_BORDER="#89b4fa"
-export DVC_COLOR_DIM="#45475a"
-export DVC_TITLE=" Da Vinci Console"
-```
-
-#### Tokyo Night
-
-```bash
-export DVC_COLOR_ACTIVE="#9ece6a"
-export DVC_COLOR_BORDER="#7aa2f7"
-export DVC_COLOR_DIM="#3b4261"
-export DVC_TITLE="󰔎 Da Vinci Console"
+# fish
+set -gx SESH_WORK_DIRS "$HOME/DEVELOPMENT:$HOME/client-work"
 ```
 
 ---
 
 ## Adding Icons
 
-Icons are matched in `icon_for()`. Edit `da-vinci-console.sh` to add your own:
+Icons are matched in `icon_for()` by session name, window name, or running command. Edit `da-vinci-console.sh` to add your own:
 
 ```bash
 icon_for() {
     local n="${1,,}"; n="${n##*/}"
     case "$n" in
         myproject*) echo "󱓞" ;;  # add your own here
+        claude*)    echo "󰊠" ;;
         # ...
     esac
 }
 ```
+
+The function is called three times per row — for the session name, the window name, and the current pane command — so a single match entry covers all three.
 
 ---
 
