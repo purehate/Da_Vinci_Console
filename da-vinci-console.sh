@@ -556,7 +556,7 @@ case "${1:-}" in
 esac
 
 # ── Preview ({-1} = last field = metadata: "session:NAME" or "window:SESSION:IDX") ───
-read -r -d '' PREVIEW_CMD <<'PREVIEW'
+PREVIEW_CMD="$(cat <<'PREVIEW'
 target={-1}
 type="${target%%:*}"
 rest="${target#*:}"
@@ -627,6 +627,7 @@ elif [ "$type" = "sesh" ]; then
     fi
 fi
 PREVIEW
+)"
 
 CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept for ctrl-d kill context
 HEADER="  Enter open  •  Tab select  •  ^F pin  •  ^X/^D kill  •  ^A reset query  •  ^/ preview  •  alt-↑↓ scroll"
