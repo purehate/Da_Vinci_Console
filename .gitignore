@@ -1,1 +1,6 @@
 .worktrees/
+.superpowers/
+docs/superpowers/
+tests/
+extras/shell-setup.bash
+extras/shell-setup.fish
