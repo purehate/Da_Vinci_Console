@@ -178,20 +178,16 @@ build_curdir() {
     [[ -z "$curdir" || ! -d "$curdir" ]] && curdir="$HOME"
     local active_sessions
     active_sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
-    find "$curdir" -maxdepth 1 -mindepth 1 -not -name '.*' 2>/dev/null | sort \
+    find "$curdir" -maxdepth 1 -mindepth 1 -type d -not -name '.*' 2>/dev/null | sort \
       | while IFS= read -r entry; do
             local icon pshort name
             icon=$(icon_for "$(basename "$entry")")
             pshort=$(short_path "$entry")
             name=$(basename "$entry")
-            if [[ -d "$entry" ]]; then
-                if echo "$active_sessions" | grep -qx "$name" 2>/dev/null; then
-                    printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}  ${C_GREEN}●${C_RESET}${SEP}session:${name}\n"
-                else
-                    printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${entry}\n"
-                fi
+            if echo "$active_sessions" | grep -qx "$name" 2>/dev/null; then
+                printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}  ${C_GREEN}●${C_RESET}${SEP}session:${name}\n"
             else
-                printf "${C_GREY}󰈔 ${pshort}${C_RESET}${SEP}skip:\n"
+                printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${entry}\n"
             fi
         done
 }
@@ -202,6 +198,10 @@ C_PERS="\033[38;2;180;140;255m"   # soft purple — personal repos
 
 section_sep() {
     printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
+}
+
+utility_sep() {
+    printf "${C_DIM}%s${C_RESET}${SEP}sep:\n" "$1"
 }
 
 session_div() {
@@ -263,23 +263,74 @@ build_tagged() {
       | sort -t'|' -k3,3r -k1,1)
 }
 
-build_all() {
-    section_sep " Sessions & Windows  "
-    build_sessions
-    section_sep " Repos  "
-    build_repos
-    # Docker section — only if docker is available and containers are running
+dvc_filter_rows() {
+    local query="${1:-}"
+
+    if [[ -z "$query" ]]; then
+        cat
+    else
+        fzf --ansi --no-sort --filter "$query" --delimiter=$'\t|\t' --nth=1
+    fi
+}
+
+dvc_count_rows() {
+    awk -F '\t\\|\\t' 'NF > 1 && $2 !~ /^(sep|skip):/ { count++ } END { print count + 0 }'
+}
+
+dvc_render_section() {
+    local label="$1"
+    local rows="$2"
+    local count
+
+    count="$(printf '%s\n' "$rows" | dvc_count_rows)"
+    [[ "$count" -eq 0 ]] && return 0
+
+    section_sep " ${label} (${count}) "
+    printf '%s\n' "$rows"
+}
+
+build_utilities() {
+    local curdir_rows ssh_rows docker_rows
+
+    curdir_rows="$(build_curdir)"
+    ssh_rows="$(build_ssh)"
+    docker_rows=""
+
     if command -v docker >/dev/null 2>&1 && docker ps -q 2>/dev/null | head -1 | grep -q .; then
-        section_sep " Docker  "
-        build_docker
+        docker_rows="$(build_docker)"
     fi
-    # SSH bookmarks — only if ~/.ssh/config exists with hosts
-    if [[ -f "${HOME}/.ssh/config" ]]; then
-        section_sep "󰣀 SSH Bookmarks  "
-        build_ssh
+
+    if [[ -n "$curdir_rows" ]]; then
+        utility_sep "  Current Dir ($(printf '%s\n' "$curdir_rows" | dvc_count_rows))"
+        printf '%s\n' "$curdir_rows"
     fi
-    section_sep " Current Dir  "
-    build_curdir
+
+    if [[ -n "$ssh_rows" ]]; then
+        utility_sep "  SSH ($(printf '%s\n' "$ssh_rows" | dvc_count_rows))"
+        printf '%s\n' "$ssh_rows"
+    fi
+
+    if [[ -n "$docker_rows" ]]; then
+        utility_sep "  Docker ($(printf '%s\n' "$docker_rows" | dvc_count_rows))"
+        printf '%s\n' "$docker_rows"
+    fi
+}
+
+dvc_list_query() {
+    local query="${1:-}"
+    local sessions repos utilities
+
+    sessions="$(build_sessions | dvc_filter_rows "$query")"
+    repos="$(build_repos | dvc_filter_rows "$query")"
+    utilities="$(build_utilities | dvc_filter_rows "$query")"
+
+    dvc_render_section "Sessions & Windows" "$sessions"
+    dvc_render_section "Repos" "$repos"
+    dvc_render_section "Utilities" "$utilities"
+}
+
+build_all() {
+    dvc_list_query ""
 }
 
 build_jump() {
@@ -303,6 +354,7 @@ build_jump() {
 # ── Reload targets (called by fzf binds) ─────────────────────────────────────
 case "${1:-}" in
     --list-all)      build_all;      exit 0 ;;
+    --list-query)    dvc_list_query "${2:-}"; exit 0 ;;
     --list-sessions) build_sessions; exit 0 ;;
     --list-windows)  build_windows;  exit 0 ;;
     --list-jump)     build_jump;     exit 0 ;;
