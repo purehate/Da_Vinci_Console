@@ -197,11 +197,11 @@ C_WORK="\033[38;2;100;160;255m"   # steel blue  — work repos
 C_PERS="\033[38;2;180;140;255m"   # soft purple — personal repos
 
 section_sep() {
-    printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:\n"
+    printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:section\n"
 }
 
 utility_sep() {
-    printf "${C_DIM}%s${C_RESET}${SEP}sep:\n" "$1"
+    printf "${C_DIM}%s${C_RESET}${SEP}sep:utility\n" "$1"
 }
 
 session_div() {
@@ -329,6 +329,77 @@ dvc_list_query() {
     dvc_render_section "Utilities" "$utilities"
 }
 
+dvc_section_positions() {
+    local query="${1:-}"
+
+    dvc_list_query "$query" | awk -F '\t\\|\\t' '$2 == "sep:section" { print NR }'
+}
+
+dvc_jump_section() {
+    local direction="$1"
+    local current_index="$2"
+    local query="${3:-}"
+    local current_line target pos
+    local positions=()
+
+    mapfile -t positions < <(dvc_section_positions "$query")
+    [[ "${#positions[@]}" -eq 0 ]] && {
+        printf 'ignore'
+        return 0
+    }
+
+    current_line=$(( current_index + 1 ))
+    target="${positions[0]}"
+
+    if [[ "$direction" == "next" ]]; then
+        target="${positions[0]}"
+        for pos in "${positions[@]}"; do
+            if (( pos > current_line )); then
+                target="$pos"
+                break
+            fi
+        done
+    else
+        target="${positions[${#positions[@]}-1]}"
+        for pos in "${positions[@]}"; do
+            (( pos >= current_line )) && break
+            target="$pos"
+        done
+    fi
+
+    printf 'pos(%s)' "$target"
+}
+
+dvc_get_mode() {
+    local state_file="$1"
+
+    if [[ -f "$state_file" ]]; then
+        cat "$state_file"
+    else
+        printf 'all\n'
+    fi
+}
+
+dvc_set_mode() {
+    local state_file="$1"
+    local mode="$2"
+
+    printf '%s\n' "$mode" > "$state_file"
+}
+
+dvc_render_mode() {
+    local mode="$1"
+    local query="${2:-}"
+
+    case "$mode" in
+        all)     dvc_list_query "$query" ;;
+        jump)    build_jump | dvc_filter_rows "$query" ;;
+        windows) build_windows | dvc_filter_rows "$query" ;;
+        tags)    build_tagged "$query" ;;
+        *)       dvc_list_query "$query" ;;
+    esac
+}
+
 build_all() {
     dvc_list_query ""
 }
@@ -355,6 +426,16 @@ build_jump() {
 case "${1:-}" in
     --list-all)      build_all;      exit 0 ;;
     --list-query)    dvc_list_query "${2:-}"; exit 0 ;;
+    --jump-section)  dvc_jump_section "${2:-next}" "${3:-0}" "${4:-}"; exit 0 ;;
+    --render-mode)
+        mode="$(dvc_get_mode "${2:-}")"
+        dvc_render_mode "$mode" "${3:-}"
+        exit 0
+        ;;
+    --set-mode)
+        dvc_set_mode "${2:-}" "${3:-all}"
+        exit 0
+        ;;
     --list-sessions) build_sessions; exit 0 ;;
     --list-windows)  build_windows;  exit 0 ;;
     --list-jump)     build_jump;     exit 0 ;;
@@ -606,11 +687,17 @@ fi
 PREVIEW
 
 CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept for ctrl-d kill context
-HEADER="  Enter switch  •  Tab select  •  ^N new  •  ^X kill  •  ^D kill sess  •  ^R rename  •  ^S move win
-  ^A all  •  ^J jump  •  ^W windows  •  ^G tags  •  ^B snap  •  ^O restore  •  ^/ preview  •  alt-↑↓ scroll"
+HEADER="  Enter switch  •  Tab select  •  ^N new  •  [ prev section  •  ] next section
+  ^A all  •  ^J jump  •  ^W windows  •  ^G tags  •  ^X kill  •  ^D kill sess  •  ^R rename  •  ^S move win
+  ^B snap  •  ^O restore  •  ^/ preview  •  alt-↑↓ scroll"
 
-selected=$(build_all | fzf \
+STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/dvc-mode.XXXXXX")"
+trap 'rm -f "$STATE_FILE"' EXIT
+printf 'all\n' > "$STATE_FILE"
+
+selected=$(printf '' | fzf \
     --ansi \
+    --disabled \
     --layout=reverse \
     --height=100% \
     --no-sort \
@@ -635,22 +722,26 @@ selected=$(build_all | fzf \
     --info=inline-right \
     --header-first \
     --header "$HEADER" \
+    --bind "start:reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')" \
+    --bind "change:reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
     --bind 'tab:toggle+down,btab:toggle+up' \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
-    --bind "enter:transform:[[ {-1} == sep: || {-1} == skip: ]] && echo 'reload(bash $SELF --list-all)+change-list-label()' || echo 'accept'" \
+    --bind "enter:transform:[[ {-1} == sep:* || {-1} == skip:* ]] && echo 'reload-sync(bash $SELF --render-mode $STATE_FILE {q})' || echo 'accept'" \
     --bind "ctrl-n:transform:[[ {-1} == sesh:* ]] && echo 'execute-silent(bash \"$SELF\" --new-session {-1})+abort' || echo 'execute(read -p \"Session name: \" n && bash \"$SELF\" --new-blank-session \"\$n\")+abort'" \
-    --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label()" \
-    --bind "ctrl-j:reload(bash '$SELF' --list-jump)+change-list-label(  Jump )" \
-    --bind "ctrl-w:reload(bash '$SELF' --list-windows)+change-list-label(  Windows )" \
-    --bind "ctrl-g:reload(bash '$SELF' --list-tags)+change-list-label(  Tags )" \
-    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload(bash '$SELF' --list-all)+change-list-label()" \
-    --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-s:execute(bash '$SELF' --move-window {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-b:execute-silent(bash '$SELF' --snapshot {-1})+reload(bash '$SELF' --list-all)" \
+    --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
+    --bind "ctrl-a:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' all)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label()" \
+    --bind "ctrl-j:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' jump)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Jump )" \
+    --bind "ctrl-w:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' windows)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Windows )" \
+    --bind "ctrl-g:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' tags)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Tags )" \
+    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
+    --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
+    --bind "ctrl-s:execute(bash '$SELF' --move-window {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
+    --bind "ctrl-b:execute-silent(bash '$SELF' --snapshot {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
     --bind "ctrl-o:execute(bash '$SELF' --restore-snapshot)+abort" \
+    --bind "]:transform:[[ \$(cat '$STATE_FILE' 2>/dev/null) == all ]] && bash '$SELF' --jump-section next {n} {q} || echo ignore" \
+    --bind "[:transform:[[ \$(cat '$STATE_FILE' 2>/dev/null) == all ]] && bash '$SELF' --jump-section prev {n} {q} || echo ignore" \
     --preview-window 'right:50%' \
     --preview "$PREVIEW_CMD" \
 )
