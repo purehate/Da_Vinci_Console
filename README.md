@@ -50,7 +50,7 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 | [fzf](https://github.com/junegunn/fzf)          | **0.58+** | Requires bordered input/list/preview labels |
 | [sesh](https://github.com/joshmedeski/sesh)     | any       | For jump mode and `sesh connect`            |
 | [zoxide](https://github.com/ajeetdsouza/zoxide) | any       | Powers jump mode directory list             |
-| A [Nerd Font](https://www.nerdfonts.com/)       | any       | For icons to render correctly               |
+| [Nerd Font](https://www.nerdfonts.com/)         | any       | For icons to render correctly               |
 
 **Optional:** [onefetch](https://github.com/o2sh/onefetch) — adds rich repo stats to the git preview pane.
 
