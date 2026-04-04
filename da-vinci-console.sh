@@ -7,6 +7,15 @@ command -v sesh >/dev/null 2>&1 || SESH="$HOME/go/bin/sesh"
 command -v "$SESH" >/dev/null 2>&1 || { echo "sesh not found" >&2; exit 1; }
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+source "$SCRIPT_DIR/lib/dvc/item_model.sh"
+source "$SCRIPT_DIR/lib/dvc/state.sh"
+source "$SCRIPT_DIR/lib/dvc/provider_workspaces.sh"
+source "$SCRIPT_DIR/lib/dvc/provider_tmux.sh"
+source "$SCRIPT_DIR/lib/dvc/merge.sh"
+source "$SCRIPT_DIR/lib/dvc/rank.sh"
+source "$SCRIPT_DIR/lib/dvc/render.sh"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 C_GREEN="\033[38;2;20;226;26m"
@@ -300,8 +309,49 @@ build_jump() {
     done
 }
 
+dvc_list_query() {
+    local query="${1:-}"
+    local current_dir workspace_file live_file
+    current_dir=$(tmux display-message -p "#{pane_current_path}" 2>/dev/null || pwd)
+    workspace_file="$(mktemp)"
+    live_file="$(mktemp)"
+
+    dvc_workspace_items "$current_dir" >"$workspace_file"
+    dvc_live_items >"$live_file"
+
+    dvc_merge_workspace_and_live_items "$workspace_file" "$live_file" \
+      | dvc_rank_items "$query" "$current_dir" \
+      | dvc_render_grouped_view
+}
+
+dvc_preview_row_cmd() {
+    local row="${1:-}"
+    [[ -z "$row" || "$row" == sep:* ]] && exit 0
+
+    local kind path target label
+    kind="$(dvc_item_field "$row" kind)"
+    path="$(dvc_item_field "$row" path)"
+    target="$(dvc_item_field "$row" target)"
+    label="$(dvc_item_field "$row" label)"
+
+    case "$kind" in
+        workspace)
+            printf "Workspace: %s\nPath: %s\n" "$label" "$path"
+            git -C "$path" log --oneline -5 2>/dev/null || printf "no git preview available\n"
+            ;;
+        session|window)
+            tmux capture-pane -p -t "$target" -S -20 2>/dev/null || printf "preview unavailable\n"
+            ;;
+        *)
+            printf "preview unavailable\n"
+            ;;
+    esac
+}
+
 # ── Reload targets (called by fzf binds) ─────────────────────────────────────
 case "${1:-}" in
+    --list-query)    dvc_list_query "${2:-}"; exit 0 ;;
+    --preview-row)   dvc_preview_row_cmd "${2:-}"; exit 0 ;;
     --list-all)      build_all;      exit 0 ;;
     --list-sessions) build_sessions; exit 0 ;;
     --list-windows)  build_windows;  exit 0 ;;
@@ -557,8 +607,9 @@ CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept f
 HEADER="  Enter switch  •  Tab select  •  ^N new  •  ^X kill  •  ^D kill sess  •  ^R rename  •  ^S move win
   ^A all  •  ^J jump  •  ^W windows  •  ^G tags  •  ^B snap  •  ^O restore  •  ^/ preview  •  alt-↑↓ scroll"
 
-selected=$(build_all | fzf \
+selected=$(bash "$SELF" --list-query "" | fzf \
     --ansi \
+    --disabled \
     --layout=reverse \
     --height=100% \
     --no-sort \
@@ -583,11 +634,13 @@ selected=$(build_all | fzf \
     --info=inline-right \
     --header-first \
     --header "$HEADER" \
+    --bind "start:reload(bash '$SELF' --list-query '')" \
+    --bind "change:reload(bash '$SELF' --list-query {q})" \
     --bind 'tab:toggle+down,btab:toggle+up' \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
-    --bind "enter:transform:[[ {-1} == sep: || {-1} == skip: ]] && echo 'reload(bash $SELF --list-all)+change-list-label()' || echo 'accept'" \
+    --bind "enter:transform:[[ {-1} == sep:* || {-1} == skip:* ]] && echo 'reload(bash $SELF --list-query {q})+change-list-label()' || echo 'accept'" \
     --bind "ctrl-n:transform:[[ {-1} == sesh:* ]] && echo 'execute-silent(bash \"$SELF\" --new-session {-1})+abort' || echo 'execute(read -p \"Session name: \" n && bash \"$SELF\" --new-blank-session \"\$n\")+abort'" \
     --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload(bash '$SELF' --list-all)" \
     --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label()" \
@@ -600,7 +653,7 @@ selected=$(build_all | fzf \
     --bind "ctrl-b:execute-silent(bash '$SELF' --snapshot {-1})+reload(bash '$SELF' --list-all)" \
     --bind "ctrl-o:execute(bash '$SELF' --restore-snapshot)+abort" \
     --preview-window 'right:50%' \
-    --preview "$PREVIEW_CMD" \
+    --preview "bash '$SELF' --preview-row {-1}" \
 )
 
 [[ -z "$selected" ]] && exit 0
@@ -613,10 +666,20 @@ if [[ "$sel_count" -gt 1 ]]; then
 fi
 
 target="${selected##*$'\t|\t'}"
-type="${target%%:*}"
-rest="${target#*:}"
+[[ "$target" == sep:* || "$target" == skip:* ]] && exit 0
+
+type="$(dvc_item_field "$target" kind)"
+rest="$(dvc_item_field "$target" target)"
+path="$(dvc_item_field "$target" path)"
 
 case "$type" in
+    workspace)
+        if [[ "$(dvc_item_field "$target" meta)" == *"live=1"* ]]; then
+            tmux switch-client -t "$rest"
+        else
+            "$SESH" connect "$path"
+        fi
+        ;;
     window)
         # Drill down into panes if the window has multiple
         sess="${rest%%:*}"
