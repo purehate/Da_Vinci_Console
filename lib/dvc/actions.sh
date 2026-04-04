@@ -56,8 +56,11 @@ dvc_dispatch_primary_action() {
       if [[ "$meta" == *"live=1"* ]]; then
         tmux switch-client -t "$target"
       else
-        tmux new-session -d -s "$label" -c "$path"
-        tmux switch-client -t "$label"
+        local session_name checksum
+        checksum="$(printf '%s' "$path" | cksum | awk '{print $1}')"
+        session_name="${label:-workspace}-${checksum:0:6}"
+        tmux new-session -d -s "$session_name" -c "$path"
+        tmux switch-client -t "$session_name"
       fi
       ;;
     window)

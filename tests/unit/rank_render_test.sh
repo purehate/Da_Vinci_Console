@@ -42,7 +42,20 @@ test_render_default_view_inserts_group_headers() {
   assert_contains $'sep:Projects' "$rendered"
 }
 
+test_render_groups_do_not_repeat_when_rows_are_interleaved() {
+  local rows rendered live_headers
+  rows="$(printf '%s\n%s\n%s\n' \
+    "$(dvc_item_emit "session" "session:main" "main" "main" "" "Live" "main" "attached=1" "50")" \
+    "$(dvc_item_emit "workspace" "workspace:/tmp/api" "api" "api" "/tmp/api" "Projects" "workspace:/tmp/api" "live=0" "40")" \
+    "$(dvc_item_emit "window" "window:main:1" "editor" "editor" "/tmp/api" "Live" "main:1" "active=1" "35")")"
+  rendered="$(printf '%s\n' "$rows" | dvc_render_grouped_view)"
+  live_headers="$(printf '%s\n' "$rendered" | grep -c $'sep:Live')"
+
+  assert_eq "1" "$live_headers"
+}
+
 test_query_match_beats_unrelated_live_item
 test_pin_boost_moves_equal_matches_up
 test_render_default_view_inserts_group_headers
+test_render_groups_do_not_repeat_when_rows_are_interleaved
 printf 'ok - rank_render\n'

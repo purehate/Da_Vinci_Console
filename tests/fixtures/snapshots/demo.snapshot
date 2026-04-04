@@ -1,0 +1,3 @@
+session=demo
+window|editor|/tmp/work/api|nvim
+window|server|/tmp/work/api|zsh

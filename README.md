@@ -1,56 +1,42 @@
 # 󰔎 Da Vinci Console
 
-A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) — three sections in one unified view: live sessions & windows, auto-discovered git repos, and current directory. No mode switching, no extra keybinds — just one popup that shows everything.
+Da Vinci Console is a tmux command center built around path-backed workspaces, live tmux state, and a ranked fzf popup. Instead of dumping static sections into one list, it merges open work, launchable projects, SSH bookmarks, and session snapshots into a single query-first picker.
 
 ![Da Vinci Console screenshot](assets/screenshot.png)
 
 ---
 
+## What v1.1 changes
+
+- **Path is truth**: project-backed workspaces are identified by absolute path, not basename, so duplicate repo names no longer collide.
+- **Hybrid ranked view**: results are grouped as `Live`, `Projects`, and `Utilities`, but search ranking still drives what rises to the top.
+- **Seeded discovery by default**: if `SESH_REPO_DIRS` is unset, the picker seeds candidates from the current directory, cached workspaces, tmux paths, `sesh`, and `zoxide` instead of crawling all of `~/`.
+- **Typed actions**: `Enter` routes by item type, `Ctrl-F` toggles pins, and destructive actions ask for confirmation.
+- **Utilities stay secondary**: SSH bookmarks and snapshots are included without taking over the main workflow.
+
+---
+
 ## Features
 
-- **Five-section unified view** — Sessions & Windows, Repos, Docker, SSH Bookmarks, and Current Dir all visible at once
-- **Auto-discovered repos** — scans `~/` up to 3 levels deep for git repos automatically; pin specific dirs via `SESH_REPO_DIRS`
-- **Git branch inline** — current branch shown next to every repo entry
-- **Git dirty indicator** — shows `✗ N` in red next to repos with uncommitted changes right in the main list
-- **Language icons** — detects Rust, Node, Go, Python, PHP, Java, Ruby, C++ by manifest file
-- **Color-coded repos** — work dirs (blue) vs personal dirs (purple), configurable via `SESH_WORK_DIRS`
-- **Smart dedup** — repos already open as sessions show `●` in green and switch directly to the existing session instead of opening a duplicate
-- **Session timestamps** — shows relative time ("2m ago", "1h ago") next to each session
-- **Session tags** — tag sessions with `#work`, `#personal`, etc. and filter by tag with `Ctrl-G`
-- **Git preview** — branch, dirty status, last 8 commits, and optional onefetch stats in the preview pane
-- **Live pane previews** — see the last 20 lines of any active session or window without switching to it
-- **Docker containers** — lists running containers with preview showing image, ports, mounts, and recent logs; Enter opens a shell inside the container
-- **SSH bookmarks** — reads `~/.ssh/config` Host entries; Enter opens an SSH connection in a new tmux window
-- **Multi-select** (`Tab`) — select multiple items and open them all at once, or batch-kill windows/sessions
-- **Pane drill-down** — selecting a window with multiple panes opens a second picker to choose the exact pane
-- **`Ctrl-N` new session** — create a session at the selected repo path, or a blank session from scratch when no repo is selected
-- **`Ctrl-X` kill window** — kill individual windows without leaving the picker
-- **`Ctrl-D` kill session** — delete sessions on the fly
-- **`Ctrl-R` rename** — rename the selected session or window inline
-- **`Ctrl-S` move window** — move a window to a different session via a nested picker
-- **`Ctrl-B` snapshot** — save the current session layout (windows, paths, commands) to a file
-- **`Ctrl-O` restore** — restore a previously saved session snapshot
-- **Jump mode** (`Ctrl-J`) — sesh configured dirs + zoxide frecency, split into labelled sections
-- **Windows view** (`Ctrl-W`) — all windows across all sessions grouped by session
-- **Tags view** (`Ctrl-G`) — filter sessions by tag
-- **Shell-aware installer** — detects bash/zsh/fish and shows the right config snippet
-- **Nerd Font icons** — matched by session name, window name, and running command
+- **Live tmux + workspace dedup**: an open repo path becomes one logical item instead of separate repo/session duplicates.
+- **Persistent pins and usage history**: pinned items get a boost in the ranked view and workspace opens are recorded in local cache state.
+- **Workspace launch and resume**: `Enter` switches to live work when it exists or opens the workspace in tmux when it does not.
+- **SSH bookmarks**: reads `Host` entries from `~/.ssh/config` and opens them in a new tmux window.
+- **Session snapshots**: lists saved snapshots from `~/.config/tmux/snapshots/` and restores them as tmux sessions.
+- **Focused previews**: workspace previews show recent git history, live tmux items show pane output, and utility rows show relevant metadata.
+- **Safer destructive actions**: kill actions require confirmation and attached sessions get a stronger prompt.
 
 ---
 
 ## Requirements
 
-| Tool                                            | Version   | Notes                                       |
-| ----------------------------------------------- | --------- | ------------------------------------------- |
-| [tmux](https://github.com/tmux/tmux)            | any       | Obviously                                   |
-| [fzf](https://github.com/junegunn/fzf)          | **0.58+** | Requires bordered input/list/preview labels |
-| [sesh](https://github.com/joshmedeski/sesh)     | any       | For jump mode and `sesh connect`            |
-| [zoxide](https://github.com/ajeetdsouza/zoxide) | any       | Powers jump mode directory list             |
-| A [Nerd Font](https://www.nerdfonts.com/)       | any       | For icons to render correctly               |
-
-**Optional:** [onefetch](https://github.com/o2sh/onefetch) — adds rich repo stats to the git preview pane.
-
-> **fzf 0.58+ is required.** Bordered input/list/preview panel labels were introduced in that release. Earlier versions will error.
+| Tool | Required | Notes |
+| ---- | -------- | ----- |
+| [tmux](https://github.com/tmux/tmux) | Yes | Popup host and session/window control |
+| [fzf](https://github.com/junegunn/fzf) | Yes, `0.58+` | Uses bordered input/list/preview labels |
+| [sesh](https://github.com/joshmedeski/sesh) | Optional | Adds extra seeded workspace candidates |
+| [zoxide](https://github.com/ajeetdsouza/zoxide) | Optional | Adds frecent directory candidates |
+| [Nerd Font](https://www.nerdfonts.com/) | Optional | For icons |
 
 ---
 
@@ -62,114 +48,87 @@ cd Da_Vinci_Console
 ./install.sh
 ```
 
-The installer copies `da-vinci-console.sh` to `~/.config/tmux/sesh_picker.sh`, detects your shell (bash/zsh/fish), shows the correct env snippet, and checks all dependencies.
+The installer copies `da-vinci-console.sh` to `~/.config/tmux/sesh_picker.sh`, prints the popup bind, and shows optional shell configuration for `SESH_REPO_DIRS`.
 
 ---
 
-## Tmux Binding
+## Tmux binding
 
-Add to your `tmux.conf`:
+Add this to your `tmux.conf`:
 
 ```tmux
 bind s display-popup -B -x C -y C -w 72% -h 72% -s "bg=default" -E "~/.config/tmux/sesh_picker.sh"
 ```
 
-Or see [`extras/tmux.conf`](extras/tmux.conf) for the full snippet. Invoke with `<prefix> s`.
+Or use [extras/tmux.conf](extras/tmux.conf).
 
 ---
 
 ## Keybindings
 
-| Key                 | Action                                                           |
-| ------------------- | ---------------------------------------------------------------- |
-| `Enter`             | Switch to selected session, window, repo, container, or SSH host |
-| `Tab` / `Shift-Tab` | Toggle multi-select and move down / up                           |
-| `Ctrl-N`            | New session — at selected repo, or blank if no repo selected     |
-| `Ctrl-X`            | Kill the selected window                                         |
-| `Ctrl-D`            | Kill the selected session                                        |
-| `Ctrl-R`            | Rename the selected session or window                            |
-| `Ctrl-S`            | Move the selected window to another session                      |
-| `Ctrl-B`            | Snapshot the selected session's layout to a file                 |
-| `Ctrl-O`            | Restore a previously saved session snapshot                      |
-| `Ctrl-A`            | Return to the default all-sections view                          |
-| `Ctrl-J`            | Jump mode — sesh configured dirs + zoxide frecency               |
-| `Ctrl-W`            | Windows view — all windows across all sessions                   |
-| `Ctrl-G`            | Tags view — filter sessions by tag                               |
-| `Ctrl-/`            | Toggle preview pane                                              |
-| `Alt-↑` / `Alt-↓`   | Scroll inside preview                                            |
-| `Esc` / `Ctrl-C`    | Exit without switching                                           |
+| Key | Action |
+| --- | ------ |
+| `Enter` | Open or switch to the selected item |
+| `Tab` / `Shift-Tab` | Select and move down / up |
+| `Ctrl-F` | Toggle pin on the selected item |
+| `Ctrl-X` / `Ctrl-D` | Kill the selected window or session with confirmation |
+| `Ctrl-A` | Reset back to the default query state |
+| `Ctrl-/` | Toggle preview |
+| `Alt-↑` / `Alt-↓` | Scroll preview |
+| `Esc` / `Ctrl-C` | Exit |
+
+Selecting multiple rows with `Tab` and pressing `Enter` opens all selected items in sequence.
 
 ---
 
 ## Configuration
 
-### Repo directories
+### Workspace roots
 
-Without any config the picker auto-scans `~/` up to 3 levels deep for git repos, skipping hidden dirs, `node_modules`, `.venv`, `vendor`, `target`, `__pycache__`, `dist`, and `build`.
-
-To pin specific directories (faster, more explicit):
-
-```bash
-# bash / zsh — add to ~/.bashrc or ~/.zshrc
-export SESH_REPO_DIRS="~/DEVELOPMENT:~/work:~/personal"
-
-# fish — add to ~/.config/fish/config.fish
-set -gx SESH_REPO_DIRS "$HOME/DEVELOPMENT:$HOME/work:$HOME/personal"
-```
-
-Multiple paths are colon-separated. Tilde is expanded automatically.
-
-### Work vs personal colour
-
-Repos found under work dirs render in **blue**; everything else renders in **purple**. The default work dir is `~/DEVELOPMENT`.
+If you want explicit workspace discovery, set `SESH_REPO_DIRS`:
 
 ```bash
 # bash / zsh
-export SESH_WORK_DIRS="~/DEVELOPMENT:~/client-work"
+export SESH_REPO_DIRS="$HOME/DEVELOPMENT:$HOME/work:$HOME/personal"
 
 # fish
-set -gx SESH_WORK_DIRS "$HOME/DEVELOPMENT:$HOME/client-work"
+set -gx SESH_REPO_DIRS "$HOME/DEVELOPMENT:$HOME/work:$HOME/personal"
 ```
 
-### Session tags
+If `SESH_REPO_DIRS` is unset, the picker uses seeded discovery from the current directory, cached workspaces, tmux paths, `sesh`, and `zoxide`.
 
-Tag sessions for quick filtering with `Ctrl-G`. Create `~/.config/tmux/session-tags.conf`:
+### Snapshots
 
+Snapshots live under `~/.config/tmux/snapshots/` and use a simple text format:
+
+```text
+session=my-session
+window|editor|/path/to/repo|nvim
+window|server|/path/to/repo|zsh
 ```
-myproject=work,frontend
-dotfiles=personal
-client-api=work,backend
+
+### Cache state
+
+Local state is stored under:
+
+```text
+~/.cache/da-vinci-console/
 ```
 
-Each line is `session_name=tag1,tag2`. Tagged sessions show `[work,frontend]` in yellow next to the session name. `Ctrl-G` switches to a filtered view showing only tagged sessions.
-
-### Session snapshots
-
-`Ctrl-B` saves the selected session's layout (window names, working directories, commands) to `~/.config/tmux/snapshots/`. `Ctrl-O` opens a picker to restore any saved snapshot, recreating the session with all its windows.
+This includes workspace cache, usage history, and pin state.
 
 ---
 
-## Adding Icons
+## Notes
 
-Icons are matched in `icon_for()` by session name, window name, or running command. Edit `da-vinci-console.sh` to add your own:
-
-```bash
-icon_for() {
-    local n="${1,,}"; n="${n##*/}"
-    case "$n" in
-        myproject*) echo "󱓞" ;;  # add your own here
-        claude*)    echo "󰊠" ;;
-        # ...
-    esac
-}
-```
-
-The function is called three times per row — for the session name, the window name, and the current pane command — so a single match entry covers all three.
+- `SESH_WORK_DIRS`, Docker rows, and session tags are not part of the v1.1 command-center scope.
+- The codebase is still Bash-first, but the runtime now routes through focused library files under `lib/dvc/`.
 
 ---
 
 ## Acknowledgements
 
-- [sesh](https://github.com/joshmedeski/sesh) by Josh Medeski — session manager powering jump mode
-- [fzf](https://github.com/junegunn/fzf) by Junegunn Choi — the fuzzy finder engine
-- [onefetch](https://github.com/o2sh/onefetch) — repo stats in the preview pane
+- [tmux](https://github.com/tmux/tmux)
+- [fzf](https://github.com/junegunn/fzf)
+- [sesh](https://github.com/joshmedeski/sesh)
+- [zoxide](https://github.com/ajeetdsouza/zoxide)

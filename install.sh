@@ -35,7 +35,7 @@ echo ""
 
 # ── Shell env var (optional) ──────────────────────────────────────────────────
 echo "── Optional: pin your repo dirs ($SHELL_NAME) ───────────────────────────"
-echo "Without SESH_REPO_DIRS set, the picker auto-scans ~/ for git repos."
+echo "Without SESH_REPO_DIRS set, the picker seeds workspaces from tmux, cache, current dir, sesh, and zoxide."
 echo "To use specific directories instead, add to $RC:"
 echo ""
 echo "  $ENV_EXPORT"
@@ -45,7 +45,7 @@ echo ""
 
 # ── Dependency check ─────────────────────────────────────────────────────────
 echo "── Dependencies ─────────────────────────────────────────────"
-for cmd in fzf sesh zoxide; do
+for cmd in tmux fzf; do
     if command -v "$cmd" >/dev/null 2>&1; then
         echo "  ✓ $cmd"
     else
@@ -53,6 +53,7 @@ for cmd in fzf sesh zoxide; do
     fi
 done
 echo ""
-echo "Optional: onefetch (rich repo previews)"
-command -v onefetch >/dev/null 2>&1 && echo "  ✓ onefetch" || echo "  - onefetch  (not installed)"
+echo "Optional: sesh, zoxide"
+command -v sesh >/dev/null 2>&1 && echo "  ✓ sesh" || echo "  - sesh  (not installed)"
+command -v zoxide >/dev/null 2>&1 && echo "  ✓ zoxide" || echo "  - zoxide  (not installed)"
 echo ""

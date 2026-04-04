@@ -13,10 +13,13 @@ source "$SCRIPT_DIR/lib/dvc/item_model.sh"
 source "$SCRIPT_DIR/lib/dvc/state.sh"
 source "$SCRIPT_DIR/lib/dvc/provider_workspaces.sh"
 source "$SCRIPT_DIR/lib/dvc/provider_tmux.sh"
+source "$SCRIPT_DIR/lib/dvc/provider_ssh.sh"
+source "$SCRIPT_DIR/lib/dvc/provider_snapshots.sh"
 source "$SCRIPT_DIR/lib/dvc/merge.sh"
 source "$SCRIPT_DIR/lib/dvc/rank.sh"
 source "$SCRIPT_DIR/lib/dvc/render.sh"
 source "$SCRIPT_DIR/lib/dvc/actions.sh"
+source "$SCRIPT_DIR/lib/dvc/preview.sh"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 C_GREEN="\033[38;2;20;226;26m"
@@ -320,33 +323,18 @@ dvc_list_query() {
     dvc_workspace_items "$current_dir" >"$workspace_file"
     dvc_live_items >"$live_file"
 
-    dvc_merge_workspace_and_live_items "$workspace_file" "$live_file" \
-      | dvc_rank_items "$query" "$current_dir" \
+    {
+        dvc_merge_workspace_and_live_items "$workspace_file" "$live_file"
+        dvc_ssh_items_from_config
+        dvc_snapshot_items
+    } | dvc_rank_items "$query" "$current_dir" \
       | dvc_render_grouped_view
 }
 
 dvc_preview_row_cmd() {
     local row="${1:-}"
     [[ -z "$row" || "$row" == sep:* ]] && exit 0
-
-    local kind path target label
-    kind="$(dvc_item_field "$row" kind)"
-    path="$(dvc_item_field "$row" path)"
-    target="$(dvc_item_field "$row" target)"
-    label="$(dvc_item_field "$row" label)"
-
-    case "$kind" in
-        workspace)
-            printf "Workspace: %s\nPath: %s\n" "$label" "$path"
-            git -C "$path" log --oneline -5 2>/dev/null || printf "no git preview available\n"
-            ;;
-        session|window)
-            tmux capture-pane -p -t "$target" -S -20 2>/dev/null || printf "preview unavailable\n"
-            ;;
-        *)
-            printf "preview unavailable\n"
-            ;;
-    esac
+    dvc_preview_row "$row"
 }
 
 # ── Reload targets (called by fzf binds) ─────────────────────────────────────

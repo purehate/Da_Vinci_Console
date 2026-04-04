@@ -14,6 +14,17 @@ test_workspace_primary_action_prefers_live_target() {
   assert_contains 'switch-client:switch-client -t main:1' "$(dvc_dispatch_primary_action "$row")"
 }
 
+test_workspace_primary_action_uses_unique_session_name() {
+  local row output
+  row="$(dvc_item_emit "workspace" "workspace:/tmp/team/api" "api" "api" "/tmp/team/api" "Projects" "workspace:/tmp/team/api" "live=0" "10")"
+
+  tmux() { printf 'tmux:%s\n' "$*"; }
+  output="$(dvc_dispatch_primary_action "$row")"
+
+  assert_contains 'tmux:new-session -d -s api-' "$output"
+  assert_contains 'tmux:switch-client -t api-' "$output"
+}
+
 test_multi_kill_rejects_non_killable_kinds() {
   local rows result
   rows="$(printf '%s\n%s\n' \
@@ -37,6 +48,7 @@ test_attached_session_kill_requires_force() {
 }
 
 test_workspace_primary_action_prefers_live_target
+test_workspace_primary_action_uses_unique_session_name
 test_multi_kill_rejects_non_killable_kinds
 test_attached_session_kill_requires_force
 printf 'ok - actions\n'
