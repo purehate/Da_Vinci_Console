@@ -8,19 +8,31 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 
 ## Features
 
-- **Three-section unified view** — Sessions & Windows, Repos, and Current Dir all visible at once
+- **Five-section unified view** — Sessions & Windows, Repos, Docker, SSH Bookmarks, and Current Dir all visible at once
 - **Auto-discovered repos** — scans `~/` up to 3 levels deep for git repos automatically; pin specific dirs via `SESH_REPO_DIRS`
 - **Git branch inline** — current branch shown next to every repo entry
+- **Git dirty indicator** — shows `✗ N` in red next to repos with uncommitted changes right in the main list
 - **Language icons** — detects Rust, Node, Go, Python, PHP, Java, Ruby, C++ by manifest file
 - **Color-coded repos** — work dirs (blue) vs personal dirs (purple), configurable via `SESH_WORK_DIRS`
 - **Smart dedup** — repos already open as sessions show `●` in green and switch directly to the existing session instead of opening a duplicate
+- **Session timestamps** — shows relative time ("2m ago", "1h ago") next to each session
+- **Session tags** — tag sessions with `#work`, `#personal`, etc. and filter by tag with `Ctrl-G`
 - **Git preview** — branch, dirty status, last 8 commits, and optional onefetch stats in the preview pane
 - **Live pane previews** — see the last 20 lines of any active session or window without switching to it
-- **`Ctrl-N` new session** — create a named tmux session at the selected repo path and jump straight to it
+- **Docker containers** — lists running containers with preview showing image, ports, mounts, and recent logs; Enter opens a shell inside the container
+- **SSH bookmarks** — reads `~/.ssh/config` Host entries; Enter opens an SSH connection in a new tmux window
+- **Multi-select** (`Tab`) — select multiple items and open them all at once, or batch-kill windows/sessions
+- **Pane drill-down** — selecting a window with multiple panes opens a second picker to choose the exact pane
+- **`Ctrl-N` new session** — create a session at the selected repo path, or a blank session from scratch when no repo is selected
 - **`Ctrl-X` kill window** — kill individual windows without leaving the picker
 - **`Ctrl-D` kill session** — delete sessions on the fly
+- **`Ctrl-R` rename** — rename the selected session or window inline
+- **`Ctrl-S` move window** — move a window to a different session via a nested picker
+- **`Ctrl-B` snapshot** — save the current session layout (windows, paths, commands) to a file
+- **`Ctrl-O` restore** — restore a previously saved session snapshot
 - **Jump mode** (`Ctrl-J`) — sesh configured dirs + zoxide frecency, split into labelled sections
 - **Windows view** (`Ctrl-W`) — all windows across all sessions grouped by session
+- **Tags view** (`Ctrl-G`) — filter sessions by tag
 - **Shell-aware installer** — detects bash/zsh/fish and shows the right config snippet
 - **Nerd Font icons** — matched by session name, window name, and running command
 
@@ -68,19 +80,24 @@ Or see [`extras/tmux.conf`](extras/tmux.conf) for the full snippet. Invoke with 
 
 ## Keybindings
 
-| Key                 | Action                                               |
-| ------------------- | ---------------------------------------------------- |
-| `Enter`             | Switch to selected session, window, or repo          |
-| `Ctrl-N`            | Create a new named session at the selected repo path |
-| `Ctrl-X`            | Kill the selected window                             |
-| `Ctrl-D`            | Kill the selected session                            |
-| `Ctrl-A`            | Return to the default all-sections view              |
-| `Ctrl-J`            | Jump mode — sesh configured dirs + zoxide frecency   |
-| `Ctrl-W`            | Windows view — all windows across all sessions       |
-| `Ctrl-/`            | Toggle preview pane                                  |
-| `Alt-↑` / `Alt-↓`   | Scroll inside preview                                |
-| `Tab` / `Shift-Tab` | Move down / up                                       |
-| `Esc` / `Ctrl-C`    | Exit without switching                               |
+| Key                 | Action                                                           |
+| ------------------- | ---------------------------------------------------------------- |
+| `Enter`             | Switch to selected session, window, repo, container, or SSH host |
+| `Tab` / `Shift-Tab` | Toggle multi-select and move down / up                           |
+| `Ctrl-N`            | New session — at selected repo, or blank if no repo selected     |
+| `Ctrl-X`            | Kill the selected window                                         |
+| `Ctrl-D`            | Kill the selected session                                        |
+| `Ctrl-R`            | Rename the selected session or window                            |
+| `Ctrl-S`            | Move the selected window to another session                      |
+| `Ctrl-B`            | Snapshot the selected session's layout to a file                 |
+| `Ctrl-O`            | Restore a previously saved session snapshot                      |
+| `Ctrl-A`            | Return to the default all-sections view                          |
+| `Ctrl-J`            | Jump mode — sesh configured dirs + zoxide frecency               |
+| `Ctrl-W`            | Windows view — all windows across all sessions                   |
+| `Ctrl-G`            | Tags view — filter sessions by tag                               |
+| `Ctrl-/`            | Toggle preview pane                                              |
+| `Alt-↑` / `Alt-↓`   | Scroll inside preview                                            |
+| `Esc` / `Ctrl-C`    | Exit without switching                                           |
 
 ---
 
@@ -113,6 +130,22 @@ export SESH_WORK_DIRS="~/DEVELOPMENT:~/client-work"
 # fish
 set -gx SESH_WORK_DIRS "$HOME/DEVELOPMENT:$HOME/client-work"
 ```
+
+### Session tags
+
+Tag sessions for quick filtering with `Ctrl-G`. Create `~/.config/tmux/session-tags.conf`:
+
+```
+myproject=work,frontend
+dotfiles=personal
+client-api=work,backend
+```
+
+Each line is `session_name=tag1,tag2`. Tagged sessions show `[work,frontend]` in yellow next to the session name. `Ctrl-G` switches to a filtered view showing only tagged sessions.
+
+### Session snapshots
+
+`Ctrl-B` saves the selected session's layout (window names, working directories, commands) to `~/.config/tmux/snapshots/`. `Ctrl-O` opens a picker to restore any saved snapshot, recreating the session with all its windows.
 
 ---
 
