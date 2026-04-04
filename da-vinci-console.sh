@@ -16,6 +16,7 @@ source "$SCRIPT_DIR/lib/dvc/provider_tmux.sh"
 source "$SCRIPT_DIR/lib/dvc/merge.sh"
 source "$SCRIPT_DIR/lib/dvc/rank.sh"
 source "$SCRIPT_DIR/lib/dvc/render.sh"
+source "$SCRIPT_DIR/lib/dvc/actions.sh"
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 C_GREEN="\033[38;2;20;226;26m"
@@ -350,6 +351,42 @@ dvc_preview_row_cmd() {
 
 # ── Reload targets (called by fzf binds) ─────────────────────────────────────
 case "${1:-}" in
+    --primary-row)   dvc_dispatch_primary_action "${2:-}"; exit 0 ;;
+    --primary-batch) dvc_dispatch_primary_batch; exit 0 ;;
+    --toggle-pin-row) dvc_toggle_pin_action "${2:-}"; exit 0 ;;
+    --kill-row)
+        row="${2:-}"
+        [[ -z "$row" || "$row" == sep:* || "$row" == skip:* ]] && exit 0
+        kind="$(dvc_item_field "$row" kind)"
+        target="$(dvc_item_field "$row" target)"
+        label="$(dvc_item_field "$row" label)"
+        force="0"
+
+        case "$kind" in
+            session|window) ;;
+            *)
+                printf "kill unavailable for %s\n" "$kind" >&2
+                exit 0
+                ;;
+        esac
+
+        if [[ "$(dvc_guard_destructive_action "kill" "$row" "$force")" == "blocked" ]]; then
+            printf "Kill attached session '%s'? [y/N] " "$label"
+            read -r answer
+            [[ "$answer" =~ ^[Yy]$ ]] || exit 0
+            force="1"
+        else
+            printf "Kill %s '%s'? [y/N] " "$kind" "$label"
+            read -r answer
+            [[ "$answer" =~ ^[Yy]$ ]] || exit 0
+        fi
+
+        case "$kind" in
+            session) tmux kill-session -t "$target" 2>/dev/null ;;
+            window)  tmux kill-window -t "$target" 2>/dev/null ;;
+        esac
+        exit 0
+        ;;
     --list-query)    dvc_list_query "${2:-}"; exit 0 ;;
     --preview-row)   dvc_preview_row_cmd "${2:-}"; exit 0 ;;
     --list-all)      build_all;      exit 0 ;;
@@ -604,8 +641,7 @@ fi
 PREVIEW
 
 CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept for ctrl-d kill context
-HEADER="  Enter switch  •  Tab select  •  ^N new  •  ^X kill  •  ^D kill sess  •  ^R rename  •  ^S move win
-  ^A all  •  ^J jump  •  ^W windows  •  ^G tags  •  ^B snap  •  ^O restore  •  ^/ preview  •  alt-↑↓ scroll"
+HEADER="  Enter open  •  Tab select  •  ^F pin  •  ^X/^D kill  •  ^A reset query  •  ^/ preview  •  alt-↑↓ scroll"
 
 selected=$(bash "$SELF" --list-query "" | fzf \
     --ansi \
@@ -640,18 +676,11 @@ selected=$(bash "$SELF" --list-query "" | fzf \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
-    --bind "enter:transform:[[ {-1} == sep:* || {-1} == skip:* ]] && echo 'reload(bash $SELF --list-query {q})+change-list-label()' || echo 'accept'" \
-    --bind "ctrl-n:transform:[[ {-1} == sesh:* ]] && echo 'execute-silent(bash \"$SELF\" --new-session {-1})+abort' || echo 'execute(read -p \"Session name: \" n && bash \"$SELF\" --new-blank-session \"\$n\")+abort'" \
-    --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-a:reload(bash '$SELF' --list-all)+change-list-label()" \
-    --bind "ctrl-j:reload(bash '$SELF' --list-jump)+change-list-label(  Jump )" \
-    --bind "ctrl-w:reload(bash '$SELF' --list-windows)+change-list-label(  Windows )" \
-    --bind "ctrl-g:reload(bash '$SELF' --list-tags)+change-list-label(  Tags )" \
-    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload(bash '$SELF' --list-all)+change-list-label()" \
-    --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-s:execute(bash '$SELF' --move-window {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-b:execute-silent(bash '$SELF' --snapshot {-1})+reload(bash '$SELF' --list-all)" \
-    --bind "ctrl-o:execute(bash '$SELF' --restore-snapshot)+abort" \
+    --bind "enter:transform:[[ {-1} == sep:* || {-1} == skip:* ]] && echo 'reload(bash $SELF --list-query {q})' || echo 'accept'" \
+    --bind "ctrl-f:execute-silent(bash '$SELF' --toggle-pin-row {-1})+reload(bash '$SELF' --list-query {q})" \
+    --bind "ctrl-x:execute(bash '$SELF' --kill-row {-1})+reload(bash '$SELF' --list-query {q})" \
+    --bind "ctrl-d:execute(bash '$SELF' --kill-row {-1})+reload(bash '$SELF' --list-query {q})" \
+    --bind "ctrl-a:reload(bash '$SELF' --list-query '')" \
     --preview-window 'right:50%' \
     --preview "bash '$SELF' --preview-row {-1}" \
 )
@@ -661,44 +690,11 @@ selected=$(bash "$SELF" --list-query "" | fzf \
 # Count selections — if multiple, batch-open them
 sel_count=$(echo "$selected" | wc -l | tr -d ' ')
 if [[ "$sel_count" -gt 1 ]]; then
-    echo "$selected" | bash "$SELF" --multi-open
+    printf '%s\n' "$selected" | bash "$SELF" --primary-batch
     exit 0
 fi
 
 target="${selected##*$'\t|\t'}"
 [[ "$target" == sep:* || "$target" == skip:* ]] && exit 0
 
-type="$(dvc_item_field "$target" kind)"
-rest="$(dvc_item_field "$target" target)"
-path="$(dvc_item_field "$target" path)"
-
-case "$type" in
-    workspace)
-        if [[ "$(dvc_item_field "$target" meta)" == *"live=1"* ]]; then
-            tmux switch-client -t "$rest"
-        else
-            "$SESH" connect "$path"
-        fi
-        ;;
-    window)
-        # Drill down into panes if the window has multiple
-        sess="${rest%%:*}"
-        widx="${rest#*:}"
-        pane_count=$(tmux list-panes -t "${sess}:${widx}" 2>/dev/null | wc -l | tr -d ' ')
-        if [[ "$pane_count" -gt 1 ]]; then
-            bash "$SELF" --drill-panes "$target"
-        else
-            tmux switch-client -t "$rest"
-        fi
-        ;;
-    session)    tmux switch-client -t "$rest" ;;
-    sesh)       "$SESH" connect "$rest" ;;
-    docker)
-        cid="${rest%%:*}"
-        cname="${rest#*:}"
-        tmux new-window -n "$cname" "docker exec -it $(printf '%q' "$cid") sh -c 'exec bash 2>/dev/null || exec sh'"
-        ;;
-    ssh)        tmux new-window -n "$rest" "ssh $(printf '%q' "$rest")" ;;
-    sep|skip)   : ;;
-    *)          "$SESH" connect "$target" ;;
-esac
+dvc_dispatch_primary_action "$target"
