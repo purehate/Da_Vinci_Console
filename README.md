@@ -1,6 +1,6 @@
 # 󰔎 Da Vinci Console
 
-A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) — three sections in one unified view: live sessions & windows, auto-discovered git repos, and current directory. No mode switching, no extra keybinds — just one popup that shows everything.
+A tmux session + window picker built on [sesh](https://github.com/joshmedeski/sesh) and [fzf](https://github.com/junegunn/fzf) with a structured sectional layout: `Sessions & Windows` first, `Repos` second, and a compact `Utilities` block at the bottom for `Current Dir`, `SSH`, and optional `Docker`.
 
 ![Da Vinci Console screenshot](assets/screenshot.png)
 
@@ -8,7 +8,10 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 
 ## Features
 
-- **Five-section unified view** — Sessions & Windows, Repos, Docker, SSH Bookmarks, and Current Dir all visible at once
+- **Structured hierarchy** — `Sessions & Windows` is the anchor block, `Repos` sits beneath it, and `Utilities` keeps support tools compact
+- **Global in-place search** — typing filters rows inside each section instead of collapsing everything into one mixed list
+- **Section counts** — top-level headers show visible row counts while you search
+- **Section jump keys** — `[` and `]` jump between visible top-level sections
 - **Auto-discovered repos** — scans `~/` up to 3 levels deep for git repos automatically; pin specific dirs via `SESH_REPO_DIRS`
 - **Git branch inline** — current branch shown next to every repo entry
 - **Git dirty indicator** — shows `✗ N` in red next to repos with uncommitted changes right in the main list
@@ -21,6 +24,7 @@ A tmux session + window picker built on [sesh](https://github.com/joshmedeski/se
 - **Live pane previews** — see the last 20 lines of any active session or window without switching to it
 - **Docker containers** — lists running containers with preview showing image, ports, mounts, and recent logs; Enter opens a shell inside the container
 - **SSH bookmarks** — reads `~/.ssh/config` Host entries; Enter opens an SSH connection in a new tmux window
+- **Utilities cleanup** — `Current Dir` only shows actionable directories; inert files are hidden
 - **Multi-select** (`Tab`) — select multiple items and open them all at once, or batch-kill windows/sessions
 - **Pane drill-down** — selecting a window with multiple panes opens a second picker to choose the exact pane
 - **`Ctrl-N` new session** — create a session at the selected repo path, or a blank session from scratch when no repo is selected
@@ -85,6 +89,7 @@ Or see [`extras/tmux.conf`](extras/tmux.conf) for the full snippet. Invoke with 
 | `Enter`             | Switch to selected session, window, repo, container, or SSH host |
 | `Tab` / `Shift-Tab` | Toggle multi-select and move down / up                           |
 | `Ctrl-N`            | New session — at selected repo, or blank if no repo selected     |
+| `[` / `]`           | Jump to the previous / next visible top-level section            |
 | `Ctrl-X`            | Kill the selected window                                         |
 | `Ctrl-D`            | Kill the selected session                                        |
 | `Ctrl-R`            | Rename the selected session or window                            |
