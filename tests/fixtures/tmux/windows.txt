@@ -1,3 +1,0 @@
-main|1|editor|nvim|1|/tmp/work/api
-main|2|server|zsh|0|/tmp/work/api
-scratch|1|notes|vim|1|/tmp/work/blog

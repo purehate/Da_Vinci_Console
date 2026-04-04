@@ -5,28 +5,17 @@ set -euo pipefail
 DEST="${1:-$HOME/.config/tmux}"
 SRC="da-vinci-console.sh"
 INSTALLED="sesh_picker.sh"
-LIB_SRC="lib"
 
 if [[ ! -f "$SRC" ]]; then
     echo "Error: run this from the repo root (da-vinci-console.sh not found)" >&2
     exit 1
 fi
 
-if [[ ! -d "$LIB_SRC/dvc" ]]; then
-    echo "Error: run this from the repo root (lib/dvc not found)" >&2
-    exit 1
-fi
-
 mkdir -p "$DEST"
 cp "$SRC" "$DEST/$INSTALLED"
 chmod +x "$DEST/$INSTALLED"
-mkdir -p "$DEST/lib"
-rm -rf "$DEST/lib/dvc"
-cp -R "$LIB_SRC/dvc" "$DEST/lib/"
-find "$DEST/lib/dvc" -type f -name '*.sh' -exec chmod +x {} +
 
 echo "✓ Installed: $DEST/$INSTALLED"
-echo "✓ Installed runtime libs: $DEST/lib/dvc"
 echo ""
 
 # ── Detect shell and rc file ─────────────────────────────────────────────────
@@ -46,7 +35,7 @@ echo ""
 
 # ── Shell env var (optional) ──────────────────────────────────────────────────
 echo "── Optional: pin your repo dirs ($SHELL_NAME) ───────────────────────────"
-echo "Without SESH_REPO_DIRS set, the picker seeds workspaces from tmux, cache, current dir, sesh, and zoxide."
+echo "Without SESH_REPO_DIRS set, the picker auto-scans ~/ for git repos."
 echo "To use specific directories instead, add to $RC:"
 echo ""
 echo "  $ENV_EXPORT"
@@ -56,7 +45,7 @@ echo ""
 
 # ── Dependency check ─────────────────────────────────────────────────────────
 echo "── Dependencies ─────────────────────────────────────────────"
-for cmd in tmux fzf; do
+for cmd in fzf sesh zoxide; do
     if command -v "$cmd" >/dev/null 2>&1; then
         echo "  ✓ $cmd"
     else
@@ -64,7 +53,6 @@ for cmd in tmux fzf; do
     fi
 done
 echo ""
-echo "Optional: sesh, zoxide"
-command -v sesh >/dev/null 2>&1 && echo "  ✓ sesh" || echo "  - sesh  (not installed)"
-command -v zoxide >/dev/null 2>&1 && echo "  ✓ zoxide" || echo "  - zoxide  (not installed)"
+echo "Optional: onefetch (rich repo previews)"
+command -v onefetch >/dev/null 2>&1 && echo "  ✓ onefetch" || echo "  - onefetch  (not installed)"
 echo ""
