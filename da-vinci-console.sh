@@ -201,23 +201,13 @@ type="${target%%:*}"
 rest="${target#*:}"
 
 if [ "$type" = "session" ]; then
-    wins=$(tmux list-windows -t "$rest" \
-      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  +,}" 2>/dev/null)
-    printf "\033[38;2;20;226;26m%s\033[0m\n\n" "$rest"
-    printf "%s\n" "$wins"
-    printf "\n\033[38;2;51;51;51m-----------------------------\033[0m\n"
     widx=$(tmux display-message -p -t "$rest" "#{window_index}" 2>/dev/null)
-    [ -n "$widx" ] && tmux capture-pane -p -t "${rest}:${widx}" -S -25 2>/dev/null \
+    [ -n "$widx" ] && tmux capture-pane -p -t "${rest}:${widx}" -S -45 2>/dev/null \
       || printf "preview unavailable\n"
 elif [ "$type" = "window" ]; then
     sess="${rest%%:*}"
     widx="${rest#*:}"
-    wins=$(tmux list-windows -t "$sess" \
-      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  +,}" 2>/dev/null)
-    printf "\033[38;2;20;226;26m%s\033[0m\n\n" "${sess}:${widx}"
-    printf "%s\n" "$wins"
-    printf "\n\033[38;2;51;51;51m-----------------------------\033[0m\n"
-    tmux capture-pane -p -t "${sess}:${widx}" -S -25 2>/dev/null \
+    tmux capture-pane -p -t "${sess}:${widx}" -S -45 2>/dev/null \
       || printf "preview unavailable\n"
 fi
 PREVIEW
