@@ -18,14 +18,6 @@ chmod +x "$DEST/$INSTALLED"
 echo "✓ Installed: $DEST/$INSTALLED"
 echo ""
 
-# ── Detect shell and rc file ─────────────────────────────────────────────────
-SHELL_NAME=$(basename "${SHELL:-bash}")
-case "$SHELL_NAME" in
-    zsh)  RC="$HOME/.zshrc" ;  ENV_EXPORT='export SESH_REPO_DIRS="$HOME/dev:$HOME/projects"' ;;
-    fish) RC="$HOME/.config/fish/config.fish" ; ENV_EXPORT='set -gx SESH_REPO_DIRS "$HOME/dev:$HOME/projects"' ;;
-    *)    RC="$HOME/.bashrc" ; ENV_EXPORT='export SESH_REPO_DIRS="$HOME/dev:$HOME/projects"' ;;
-esac
-
 # ── tmux.conf snippet ─────────────────────────────────────────────────────────
 echo "── tmux.conf ────────────────────────────────────────────────"
 echo "Add this to your tmux.conf (or see extras/tmux.conf):"
@@ -33,26 +25,13 @@ echo ""
 echo "  bind s display-popup -B -x C -y C -w 72% -h 72% -s \"bg=default\" -E \"$DEST/$INSTALLED\""
 echo ""
 
-# ── Shell env var (optional) ──────────────────────────────────────────────────
-echo "── Optional: pin your repo dirs ($SHELL_NAME) ───────────────────────────"
-echo "Without SESH_REPO_DIRS set, the picker auto-scans ~/ for git repos."
-echo "To use specific directories instead, add to $RC:"
-echo ""
-echo "  $ENV_EXPORT"
-echo ""
-echo "Separate multiple paths with colons. Tilde is supported."
-echo ""
-
 # ── Dependency check ─────────────────────────────────────────────────────────
 echo "── Dependencies ─────────────────────────────────────────────"
-for cmd in fzf sesh zoxide; do
+for cmd in tmux fzf; do
     if command -v "$cmd" >/dev/null 2>&1; then
         echo "  ✓ $cmd"
     else
-        echo "  ✗ $cmd  (not found — install it for full functionality)"
+        echo "  ✗ $cmd  (not found)"
     fi
 done
-echo ""
-echo "Optional: onefetch (rich repo previews)"
-command -v onefetch >/dev/null 2>&1 && echo "  ✓ onefetch" || echo "  - onefetch  (not installed)"
 echo ""

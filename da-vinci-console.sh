@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# sesh_picker.sh — TrustedSec session/window picker
+# da-vinci-console.sh - tmux session/window picker
 set -u
 
-SESH="sesh"
-command -v sesh >/dev/null 2>&1 || SESH="$HOME/go/bin/sesh"
-command -v "$SESH" >/dev/null 2>&1 || { echo "sesh not found" >&2; exit 1; }
-
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SEP=$'\t|\t'
 
-# ── Colors ───────────────────────────────────────────────────────────────────
+command -v tmux >/dev/null 2>&1 || { echo "tmux not found" >&2; exit 1; }
+command -v fzf >/dev/null 2>&1 || { echo "fzf not found" >&2; exit 1; }
+
 C_GREEN="\033[38;2;20;226;26m"
 C_GREY="\033[38;2;123;132;150m"
 C_DIM="\033[38;2;51;51;51m"
@@ -16,744 +15,249 @@ C_WHITE="\033[38;2;220;220;220m"
 C_BRIGHT="\033[38;2;255;255;255m"
 C_RED="\033[38;2;255;100;80m"
 C_YELLOW="\033[38;2;255;200;60m"
+C_BORDER="\033[38;2;36;176;48m"
 C_RESET="\033[0m"
 
 FZF_COLORS="border:#24b030,fg:#b3b3b3,hl:#14E21A,fg+:#e6e6e6,bg+:-1,hl+:#14E21A,pointer:#14E21A,header:#7b8496,marker:#14E21A,spinner:#14E21A,prompt:#14E21A,gutter:-1,label:#24b030,bg:-1,preview-bg:-1"
 
-SEP=$'\t|\t'
-
-# ── Icons ────────────────────────────────────────────────────────────────────
 icon_for() {
-    local n="${1,,}"; n="${n##*/}"
+    local n="${1,,}"
+    n="${n##*/}"
     case "$n" in
-        claude*)              echo "󰊠" ;;
-        codex*|node)          echo "󰆍" ;;
-        lazygit|lg|git)       echo "" ;;
-        lazydocker|ld|docker) echo "" ;;
-        yazi)                 echo "󰙅" ;;
-        nvim|vim|vi)          echo "" ;;
-        btop|htop|top)        echo "" ;;
-        ssh*)                 echo "󰣀" ;;
-        python*|py|ipython)   echo "" ;;
-        node*|npm|pnpm)       echo "" ;;
-        go|golang)            echo "" ;;
-        rust|cargo)           echo "" ;;
-        odoo*)                echo "" ;;
-        zsh|bash|fish|shell*) echo "" ;;
-        qa|dev|staging)       echo "󰑮" ;;
+        claude*)              echo "C" ;;
+        codex*)               echo "X" ;;
+        nvim|vim|vi)          echo "V" ;;
+        lazygit|lg|git)       echo "G" ;;
+        lazydocker|ld|docker) echo "D" ;;
+        yazi)                 echo "Y" ;;
+        btop|htop|top)        echo "T" ;;
+        ssh*)                 echo "S" ;;
+        zsh|bash|fish|shell*) echo "$" ;;
         *)                    echo "" ;;
     esac
 }
 
-short_path() { [[ "$1" == "$HOME"* ]] && echo "~${1#"$HOME"}" || echo "$1"; }
+short_path() {
+    [[ "$1" == "$HOME"* ]] && printf '~%s' "${1#"$HOME"}" || printf '%s' "$1"
+}
 
 relative_time() {
     local now diff s="$1"
     now=$(date +%s)
     diff=$(( now - s ))
-    if   (( diff < 60 ));    then echo "just now"
-    elif (( diff < 3600 ));  then echo "$(( diff / 60 ))m ago"
-    elif (( diff < 86400 )); then echo "$(( diff / 3600 ))h ago"
-    else                          echo "$(( diff / 86400 ))d ago"
+    if   (( diff < 60 ));    then echo "now"
+    elif (( diff < 3600 ));  then echo "$(( diff / 60 ))m"
+    elif (( diff < 86400 )); then echo "$(( diff / 3600 ))h"
+    else                          echo "$(( diff / 86400 ))d"
     fi
 }
 
-lang_icon_for() {
-    local d="$1"
-    [[ -f "$d/Cargo.toml" ]]                                                     && echo "" && return
-    [[ -f "$d/package.json" ]]                                                    && echo "" && return
-    [[ -f "$d/go.mod" ]]                                                         && echo "" && return
-    [[ -f "$d/requirements.txt" || -f "$d/pyproject.toml" || -f "$d/setup.py" ]] && echo "" && return
-    [[ -f "$d/composer.json" ]]                                                   && echo "" && return
-    [[ -f "$d/pom.xml" || -f "$d/build.gradle" || -f "$d/build.gradle.kts" ]]   && echo "" && return
-    [[ -f "$d/Gemfile" ]]                                                        && echo "" && return
-    [[ -f "$d/CMakeLists.txt" ]]                                                 && echo "" && return
-    echo ""
+repeat_str() {
+    local ch="$1" n="$2" out=""
+    (( n > 0 )) || { printf ''; return; }
+    while (( n > 0 )); do out+="$ch"; (( n-- )); done
+    printf '%s' "$out"
 }
 
-repo_color() {
-    local repo="$1" d work_dirs="${SESH_WORK_DIRS:-$HOME/DEVELOPMENT}"
-    local IFS=':'
-    for d in $work_dirs; do
-        d="${d/#\~/$HOME}"
-        [[ "$repo" == "$d"* ]] && echo "$C_WORK" && return
-    done
-    echo "$C_PERS"
+div_width() {
+    local cols="${COLUMNS:-0}"
+    [[ "$cols" -lt 1 ]] && cols=$(tput cols 2>/dev/null || echo 120)
+    local list_cols=$(( cols / 2 - 6 ))
+    (( list_cols < 28 )) && list_cols=28
+    (( list_cols > 90 )) && list_cols=90
+    printf '%s' "$list_cols"
 }
-
-# ── List builders ────────────────────────────────────────────────────────────
-build_sessions() {
-    local first=1
-    while IFS='|' read -r sname wins att activity; do
-        local icon wlabel att_mark age_str
-        [[ "$first" == "1" ]] && first=0 || session_div
-        icon=$(icon_for "$sname")
-        wlabel=$([[ "$wins" == "1" ]] && echo "1 window" || echo "${wins} windows")
-        att_mark=$([[ "$att" == "1" ]] && echo " ${C_GREEN}●${C_RESET}" || echo "")
-        age_str=""
-        [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity")${C_RESET}"
-        local stags tag_str=""
-        stags=$(tags_for_session "$sname")
-        [[ -n "$stags" ]] && tag_str="  ${C_YELLOW}[${stags}]${C_RESET}"
-        printf "${C_BRIGHT}${icon:+$icon }${sname}${C_RESET}  ${C_GREY}${wlabel}${C_RESET}${att_mark}${age_str}${tag_str}${SEP}session:${sname}\n"
-
-        while IFS='|' read -r widx wname wcmd wactive wpath; do
-            local wicon pshort mark
-            wicon=$(icon_for "$wcmd"); [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
-            pshort=$(short_path "$wpath")
-            mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}✦${C_RESET}" || echo "")
-            printf "  ${C_DIM}╰─${C_RESET} ${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
-        done < <(tmux list-windows -t "$sname" \
-          -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null)
-    done < <(tmux list-sessions -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}" 2>/dev/null \
-      | sort -t'|' -k3,3r -k1,1)
-}
-
-build_windows() {
-    local cur_sess=""
-    while IFS='|' read -r sname widx wname wcmd wactive wpath; do
-        if [[ "$sname" != "$cur_sess" ]]; then
-            [[ -n "$cur_sess" ]] && session_div
-            section_sep " $sname"
-            cur_sess="$sname"
-        fi
-        local wicon pshort mark
-        wicon=$(icon_for "$wcmd"); [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
-        pshort=$(short_path "$wpath")
-        mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}✦${C_RESET}" || echo "")
-        printf "${C_WHITE}${wicon:+$wicon }${wname}${C_RESET}  ${C_GREY}${sname}:${widx}  ${wcmd}  ${pshort}${C_RESET}${mark}${SEP}window:${sname}:${widx}\n"
-    done < <(tmux list-windows -a \
-      -F "#{session_name}|#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}" 2>/dev/null \
-      | sort -t'|' -k1,1 -k2,2n)
-}
-
-find_repos() {
-    # If SESH_REPO_DIRS is set, search those dirs (colon-separated); otherwise auto-scan ~/
-    if [[ -n "${SESH_REPO_DIRS:-}" ]]; then
-        local IFS=':'
-        for base in $SESH_REPO_DIRS; do
-            base="${base/#\~/$HOME}"
-            [[ -d "$base" ]] || continue
-            find "$base" -maxdepth 2 -name ".git" -type d 2>/dev/null | sed 's|/.git$||'
-        done
-    else
-        find "$HOME" -maxdepth 3 \
-          \( \( -name ".*" ! -name ".git" \) -o -name "node_modules" -o -name ".venv" \
-             -o -name "venv" -o -name "vendor" -o -name "target" \
-             -o -name "__pycache__" -o -name "dist" -o -name "build" \) -prune \
-          -o -name ".git" -type d -print 2>/dev/null | sed 's|/.git$||'
-    fi | sort -u
-}
-
-build_repos() {
-    local active_sessions
-    active_sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
-
-    find_repos | while IFS= read -r repo; do
-        local icon lang pshort name color branch branch_str
-        icon=$(icon_for "$(basename "$repo")")
-        lang=$(lang_icon_for "$repo")
-        pshort=$(short_path "$repo")
-        name=$(basename "$repo")
-        color=$(repo_color "$repo")
-        branch=$(git -C "$repo" symbolic-ref --short HEAD 2>/dev/null \
-                 || git -C "$repo" rev-parse --short HEAD 2>/dev/null || echo "")
-        branch_str=$([[ -n "$branch" ]] && echo "  ${C_DIM}${branch}${C_RESET}" || echo "")
-        dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-        dirty_str=""
-        if [[ "$dirty" -gt 0 ]]; then
-            dirty_str="  ${C_RED}✗ ${dirty}${C_RESET}"
-        fi
-        if echo "$active_sessions" | grep -qx "$name" 2>/dev/null; then
-            printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}${branch_str}${dirty_str}  ${C_GREEN}● ${lang}${C_RESET}${SEP}session:${name}\n"
-        else
-            printf "${color}${icon:+$icon }${pshort}${C_RESET}${branch_str}${dirty_str}  ${C_GREY}${lang}${C_RESET}${SEP}sesh:${repo}\n"
-        fi
-    done
-}
-
-build_curdir() {
-    local curdir
-    curdir=$(tmux display-message -p "#{pane_current_path}" 2>/dev/null)
-    [[ -z "$curdir" || ! -d "$curdir" ]] && curdir="$HOME"
-    local active_sessions
-    active_sessions=$(tmux list-sessions -F "#{session_name}" 2>/dev/null)
-    find "$curdir" -maxdepth 1 -mindepth 1 -type d -not -name '.*' 2>/dev/null | sort \
-      | while IFS= read -r entry; do
-            local icon pshort name
-            icon=$(icon_for "$(basename "$entry")")
-            pshort=$(short_path "$entry")
-            name=$(basename "$entry")
-            if echo "$active_sessions" | grep -qx "$name" 2>/dev/null; then
-                printf "${C_GREEN}${icon:+$icon }${pshort}${C_RESET}  ${C_GREEN}●${C_RESET}${SEP}session:${name}\n"
-            else
-                printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${entry}\n"
-            fi
-        done
-}
-
-C_BORDER="\033[38;2;36;176;48m"   # #24b030 — matches fzf border colour
-C_WORK="\033[38;2;100;160;255m"   # steel blue  — work repos
-C_PERS="\033[38;2;180;140;255m"   # soft purple — personal repos
 
 section_sep() {
-    printf "${C_BORDER}──${C_RESET} ${C_WHITE}${1}${C_RESET} ${C_BORDER}$(printf '─%.0s' {1..52})${C_RESET}${SEP}sep:section\n"
-}
-
-utility_sep() {
-    printf "${C_DIM}%s${C_RESET}${SEP}sep:utility\n" "$1"
+    local label="$1" w body
+    w=$(div_width)
+    body=$(repeat_str '-' $(( w - ${#label} - 4 )))
+    printf "${C_BORDER}--${C_RESET} ${C_WHITE}%s${C_RESET} ${C_BORDER}%s${C_RESET}${SEP}sep:section\n" "$label" "$body"
 }
 
 session_div() {
-    printf "${C_DIM}   $(printf '╌%.0s' {1..58})${C_RESET}${SEP}sep:\n"
+    local w body
+    w=$(div_width)
+    body=$(repeat_str '-' $(( w - 3 )))
+    printf "${C_DIM}   %s${C_RESET}${SEP}sep:\n" "$body"
 }
 
-build_docker() {
-    command -v docker >/dev/null 2>&1 || return
-    local cid cname cimage cstatus
-    while IFS='|' read -r cid cname cimage cstatus; do
-        [[ -z "$cid" ]] && continue
-        printf "${C_WHITE} ${cname}${C_RESET}  ${C_GREY}${cimage}  ${cstatus}${C_RESET}${SEP}docker:${cid}:${cname}\n"
-    done < <(docker ps --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}' 2>/dev/null)
-}
+build_sessions() {
+    local first=1 any=0
 
-build_ssh() {
-    local ssh_config="${HOME}/.ssh/config"
-    [[ -f "$ssh_config" ]] || return
-    awk '/^[Hh]ost / { for (i=2; i<=NF; i++) print $i }' "$ssh_config" 2>/dev/null \
-      | while IFS= read -r host; do
-            # Skip wildcards and empty
-            [[ -z "$host" || "$host" == *"*"* || "$host" == *"?"* ]] && continue
-            printf "${C_WHITE}󰣀 ${host}${C_RESET}${SEP}ssh:${host}\n"
-        done
-}
-
-# ── Session tags ──────────────────────────────────────────────────────────────
-TAGS_FILE="${HOME}/.config/tmux/session-tags.conf"
-
-tags_for_session() {
-    local sess="$1"
-    [[ -f "$TAGS_FILE" ]] || return
-    local line
-    line=$(grep "^${sess}=" "$TAGS_FILE" 2>/dev/null) || return
-    echo "${line#*=}"
-}
-
-build_tagged() {
-    local filter_tag="$1"
-    [[ -f "$TAGS_FILE" ]] || return
-    local first=1
-    while IFS='|' read -r sname wins att activity; do
-        local stags
-        stags=$(tags_for_session "$sname")
-        [[ -z "$stags" ]] && continue
-        if [[ -n "$filter_tag" ]] && ! echo "$stags" | tr ',' '\n' | grep -qx "$filter_tag"; then
-            continue
-        fi
-        local icon wlabel att_mark age_str
+    while IFS='|' read -r sname wins attached activity; do
+        local icon wlabel attached_mark age_str
+        any=1
         [[ "$first" == "1" ]] && first=0 || session_div
+
         icon=$(icon_for "$sname")
         wlabel=$([[ "$wins" == "1" ]] && echo "1 window" || echo "${wins} windows")
-        att_mark=$([[ "$att" == "1" ]] && echo " ${C_GREEN}●${C_RESET}" || echo "")
+        attached_mark=$([[ "$attached" == "1" ]] && echo " ${C_GREEN}*${C_RESET}" || echo "")
         age_str=""
-        [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity")${C_RESET}"
-        local tag_str="${C_YELLOW}[${stags}]${C_RESET}"
-        printf "${C_BRIGHT}${icon:+$icon }${sname}${C_RESET}  ${C_GREY}${wlabel}${C_RESET}${att_mark}${age_str}  ${tag_str}${SEP}session:${sname}\n"
-    done < <(tmux list-sessions -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}" 2>/dev/null \
-      | sort -t'|' -k3,3r -k1,1)
-}
+        [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity") idle${C_RESET}"
 
-dvc_filter_rows() {
-    local query="${1:-}"
+        printf "${C_BRIGHT}%s%s${C_RESET}  ${C_GREY}%s${C_RESET}%b%b${SEP}session:%s\n" \
+            "${icon:+$icon }" "$sname" "$wlabel" "$attached_mark" "$age_str" "$sname"
 
-    if [[ -z "$query" ]]; then
-        cat
-    else
-        fzf --ansi --no-sort --filter "$query" --delimiter=$'\t|\t' --nth=1
+        while IFS='|' read -r widx wname wcmd wactive wpath panes; do
+            local wicon pshort active_mark pane_mark
+            wicon=$(icon_for "$wcmd")
+            [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
+            pshort=$(short_path "$wpath")
+            active_mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}+${C_RESET}" || echo "")
+            pane_mark=$([[ "$panes" == "1" ]] && echo "" || echo " ${C_YELLOW}${panes}p${C_RESET}")
+            printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
+                "${wicon:+$wicon }" "$wname" "$sname" "$widx" "$wcmd" "$pshort" "$pane_mark" "$active_mark" "$sname" "$widx"
+        done < <(tmux list-windows -t "$sname" \
+            -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}" 2>/dev/null)
+    done < <(tmux list-sessions \
+        -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}" 2>/dev/null \
+        | sort -t'|' -k3,3r -k1,1)
+
+    if [[ "$any" == "0" ]]; then
+        printf "${C_DIM}No tmux sessions found. Press Ctrl-N to create one.${C_RESET}${SEP}sep:empty\n"
     fi
 }
 
-dvc_count_rows() {
-    awk -F '\t\\|\\t' 'NF > 1 && $2 !~ /^(sep|skip):/ { count++ } END { print count + 0 }'
+list_all() {
+    section_sep " Tmux Sessions "
+    build_sessions
 }
 
-dvc_render_section() {
-    local label="$1"
-    local rows="$2"
-    local count
-
-    count="$(printf '%s\n' "$rows" | dvc_count_rows)"
-    [[ "$count" -eq 0 ]] && return 0
-
-    section_sep " ${label} (${count}) "
-    printf '%s\n' "$rows"
+new_session() {
+    local name="$1"
+    [[ -z "$name" ]] && exit 0
+    tmux new-session -d -s "$name" 2>/dev/null || true
+    tmux switch-client -t "$name" 2>/dev/null
 }
 
-build_utilities() {
-    local curdir_rows ssh_rows docker_rows
-
-    curdir_rows="$(build_curdir)"
-    ssh_rows="$(build_ssh)"
-    docker_rows=""
-
-    if command -v docker >/dev/null 2>&1 && docker ps -q 2>/dev/null | head -1 | grep -q .; then
-        docker_rows="$(build_docker)"
-    fi
-
-    if [[ -n "$curdir_rows" ]]; then
-        utility_sep "  Current Dir ($(printf '%s\n' "$curdir_rows" | dvc_count_rows))"
-        printf '%s\n' "$curdir_rows"
-    fi
-
-    if [[ -n "$ssh_rows" ]]; then
-        utility_sep "  SSH ($(printf '%s\n' "$ssh_rows" | dvc_count_rows))"
-        printf '%s\n' "$ssh_rows"
-    fi
-
-    if [[ -n "$docker_rows" ]]; then
-        utility_sep "  Docker ($(printf '%s\n' "$docker_rows" | dvc_count_rows))"
-        printf '%s\n' "$docker_rows"
-    fi
-}
-
-dvc_list_query() {
-    local query="${1:-}"
-    local sessions repos utilities
-
-    sessions="$(build_sessions | dvc_filter_rows "$query")"
-    repos="$(build_repos | dvc_filter_rows "$query")"
-    utilities="$(build_utilities | dvc_filter_rows "$query")"
-
-    dvc_render_section "Sessions & Windows" "$sessions"
-    dvc_render_section "Repos" "$repos"
-    dvc_render_section "Utilities" "$utilities"
-}
-
-dvc_section_positions() {
-    local query="${1:-}"
-
-    dvc_list_query "$query" | awk -F '\t\\|\\t' '$2 == "sep:section" { print NR }'
-}
-
-dvc_jump_section() {
-    local direction="$1"
-    local current_index="$2"
-    local query="${3:-}"
-    local current_line target pos
-    local positions=()
-
-    mapfile -t positions < <(dvc_section_positions "$query")
-    [[ "${#positions[@]}" -eq 0 ]] && {
-        printf 'ignore'
-        return 0
-    }
-
-    current_line=$(( current_index + 1 ))
-    target="${positions[0]}"
-
-    if [[ "$direction" == "next" ]]; then
-        target="${positions[0]}"
-        for pos in "${positions[@]}"; do
-            if (( pos > current_line )); then
-                target="$pos"
-                break
-            fi
-        done
-    else
-        target="${positions[${#positions[@]}-1]}"
-        for pos in "${positions[@]}"; do
-            (( pos >= current_line )) && break
-            target="$pos"
-        done
-    fi
-
-    printf 'pos(%s)' "$target"
-}
-
-dvc_get_mode() {
-    local state_file="$1"
-
-    if [[ -f "$state_file" ]]; then
-        cat "$state_file"
-    else
-        printf 'all\n'
-    fi
-}
-
-dvc_set_mode() {
-    local state_file="$1"
-    local mode="$2"
-
-    printf '%s\n' "$mode" > "$state_file"
-}
-
-dvc_render_mode() {
-    local mode="$1"
-    local query="${2:-}"
-
-    case "$mode" in
-        all)     dvc_list_query "$query" ;;
-        jump)    build_jump | dvc_filter_rows "$query" ;;
-        windows) build_windows | dvc_filter_rows "$query" ;;
-        tags)    build_tagged "$query" ;;
-        *)       dvc_list_query "$query" ;;
+kill_target() {
+    local raw="$1" type rest
+    type="${raw%%:*}"
+    rest="${raw#*:}"
+    case "$type" in
+        session)
+            tmux kill-session -t "$rest" 2>/dev/null
+            ;;
+        window)
+            tmux kill-window -t "${rest%%:*}:${rest#*:}" 2>/dev/null
+            ;;
     esac
 }
 
-build_all() {
-    dvc_list_query ""
-}
+rename_target() {
+    local raw="$1" type rest sess widx newname
+    type="${raw%%:*}"
+    rest="${raw#*:}"
 
-build_jump() {
-    section_sep " Configured"
-    "$SESH" list -c -z 2>/dev/null | while IFS= read -r name; do
-        local icon pshort
-        icon=$(icon_for "$(basename "$name")")
-        pshort=$(short_path "$name")
-        printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}${SEP}sesh:${name}\n"
-    done
-
-    section_sep " Frecent  (zoxide)"
-    zoxide query -l 2>/dev/null | while IFS= read -r name; do
-        local icon pshort
-        icon=$(icon_for "$(basename "$name")")
-        pshort=$(short_path "$name")
-        printf "${C_WHITE}${icon:+$icon }${pshort}${C_RESET}  ${C_DIM}z${C_RESET}${SEP}sesh:${name}\n"
-    done
-}
-
-# ── Reload targets (called by fzf binds) ─────────────────────────────────────
-case "${1:-}" in
-    --list-all)      build_all;      exit 0 ;;
-    --list-query)    dvc_list_query "${2:-}"; exit 0 ;;
-    --jump-section)  dvc_jump_section "${2:-next}" "${3:-0}" "${4:-}"; exit 0 ;;
-    --render-mode)
-        mode="$(dvc_get_mode "${2:-}")"
-        dvc_render_mode "$mode" "${3:-}"
-        exit 0
-        ;;
-    --set-mode)
-        dvc_set_mode "${2:-}" "${3:-all}"
-        exit 0
-        ;;
-    --list-sessions) build_sessions; exit 0 ;;
-    --list-windows)  build_windows;  exit 0 ;;
-    --list-jump)     build_jump;     exit 0 ;;
-    --list-repos)    build_repos;    exit 0 ;;
-    --new-session)
-        raw="${2:-}"
-        path="${raw#sesh:}"
-        [[ "$path" == "$raw" || -z "$path" ]] && exit 0
-        name="$(basename "$path")"
-        tmux new-session -d -s "$name" -c "$path" 2>/dev/null || true
-        tmux switch-client -t "$name" 2>/dev/null
-        exit 0
-        ;;
-    --kill-window)
-        raw="${2:-}"
-        [[ "$raw" == window:* ]] || exit 0
-        rest="${raw#window:}"
-        tmux kill-window -t "${rest%%:*}:${rest#*:}" 2>/dev/null
-        exit 0
-        ;;
-    --rename)
-        raw="${2:-}"
-        type="${raw%%:*}"
-        rest="${raw#*:}"
-        if [[ "$type" == "session" ]]; then
-            printf "Rename session '%s': " "$rest"
-            read -r newname
-            [[ -n "$newname" ]] && tmux rename-session -t "$rest" "$newname" 2>/dev/null
-        elif [[ "$type" == "window" ]]; then
-            sess="${rest%%:*}"
-            widx="${rest#*:}"
-            printf "Rename window '%s:%s': " "$sess" "$widx"
-            read -r newname
-            [[ -n "$newname" ]] && tmux rename-window -t "${sess}:${widx}" "$newname" 2>/dev/null
-        fi
-        exit 0
-        ;;
-    --move-window)
-        raw="${2:-}"
-        [[ "$raw" == window:* ]] || exit 0
-        rest="${raw#window:}"
-        src_sess="${rest%%:*}"
-        src_widx="${rest#*:}"
-        # Pick destination session via nested fzf
-        dest=$(tmux list-sessions -F "#{session_name}" 2>/dev/null \
-          | grep -v "^${src_sess}$" \
-          | fzf --ansi --layout=reverse --height=40% --prompt="Move to session: " \
-                --border=rounded --color="$FZF_COLORS" 2>/dev/null)
-        [[ -z "$dest" ]] && exit 0
-        tmux move-window -s "${src_sess}:${src_widx}" -t "${dest}:" 2>/dev/null
-        exit 0
-        ;;
-    --new-blank-session)
-        name="${2:-}"
-        [[ -z "$name" ]] && exit 0
-        tmux new-session -d -s "$name" 2>/dev/null || true
-        tmux switch-client -t "$name" 2>/dev/null
-        exit 0
-        ;;
-    --snapshot)
-        raw="${2:-}"
-        type="${raw%%:*}"
-        rest="${raw#*:}"
-        [[ "$type" == "session" || "$type" == "window" ]] || exit 0
-        snap_dir="${HOME}/.config/tmux/snapshots"
-        mkdir -p "$snap_dir"
-        sess="$rest"
-        [[ "$type" == "window" ]] && sess="${rest%%:*}"
-        snap_file="${snap_dir}/${sess}.snapshot"
-        {
-            echo "# Da Vinci Console snapshot: ${sess}"
-            echo "# Created: $(date -Iseconds)"
-            echo "session=$sess"
-            tmux list-windows -t "$sess" \
-              -F "window|#{window_name}|#{pane_current_path}|#{pane_current_command}|#{window_layout}" 2>/dev/null
-        } > "$snap_file"
-        exit 0
-        ;;
-    --restore-snapshot)
-        snap_dir="${HOME}/.config/tmux/snapshots"
-        [[ -d "$snap_dir" ]] || { echo "No snapshots found" >&2; exit 0; }
-        snap=$(ls -1 "$snap_dir"/*.snapshot 2>/dev/null \
-          | xargs -I{} basename {} .snapshot \
-          | fzf --ansi --layout=reverse --height=40% --prompt="Restore snapshot: " \
-                --border=rounded --color="$FZF_COLORS" 2>/dev/null)
-        [[ -z "$snap" ]] && exit 0
-        snap_file="${snap_dir}/${snap}.snapshot"
-        [[ -f "$snap_file" ]] || exit 0
-        sess=$(grep "^session=" "$snap_file" | cut -d= -f2)
-        tmux new-session -d -s "$sess" 2>/dev/null || true
-        first=1
-        while IFS='|' read -r _ wname wpath wcmd _layout; do
-            if [[ "$first" == "1" ]]; then
-                tmux rename-window -t "${sess}:0" "$wname" 2>/dev/null
-                tmux send-keys -t "${sess}:0" "cd $(printf '%q' "$wpath")" Enter 2>/dev/null
-                first=0
-            else
-                tmux new-window -t "${sess}:" -n "$wname" -c "$wpath" 2>/dev/null
-            fi
-        done < <(grep "^window|" "$snap_file")
-        tmux switch-client -t "$sess" 2>/dev/null
-        exit 0
-        ;;
-    --drill-panes)
-        raw="${2:-}"
-        [[ "$raw" == window:* ]] || exit 0
-        rest="${raw#window:}"
+    if [[ "$type" == "session" ]]; then
+        printf "Rename session '%s': " "$rest"
+        read -r newname
+        [[ -n "$newname" ]] && tmux rename-session -t "$rest" "$newname" 2>/dev/null
+    elif [[ "$type" == "window" ]]; then
         sess="${rest%%:*}"
         widx="${rest#*:}"
-        pane_count=$(tmux list-panes -t "${sess}:${widx}" 2>/dev/null | wc -l | tr -d ' ')
-        if [[ "$pane_count" -le 1 ]]; then
-            tmux switch-client -t "${sess}:${widx}" 2>/dev/null
-            exit 0
-        fi
-        pane_sel=$(tmux list-panes -t "${sess}:${widx}" \
-          -F "#{pane_index}  #{pane_current_command}  #{pane_current_path}  #{pane_width}x#{pane_height}#{?pane_active,  ✦,}" 2>/dev/null \
-          | fzf --ansi --layout=reverse --height=40% --prompt="Select pane: " \
-                --border=rounded --color="$FZF_COLORS" \
-                --preview "tmux capture-pane -p -t '${sess}:${widx}.{1}' -S -20 2>/dev/null" \
-                --preview-window='right:50%' 2>/dev/null)
-        [[ -z "$pane_sel" ]] && exit 0
-        pidx="${pane_sel%%  *}"
-        pidx="${pidx%% *}"
-        tmux select-pane -t "${sess}:${widx}.${pidx}" 2>/dev/null
+        printf "Rename window '%s:%s': " "$sess" "$widx"
+        read -r newname
+        [[ -n "$newname" ]] && tmux rename-window -t "${sess}:${widx}" "$newname" 2>/dev/null
+    fi
+}
+
+drill_panes() {
+    local raw="$1" rest sess widx pane_count pane_sel pidx
+    [[ "$raw" == window:* ]] || exit 0
+    rest="${raw#window:}"
+    sess="${rest%%:*}"
+    widx="${rest#*:}"
+    pane_count=$(tmux list-panes -t "${sess}:${widx}" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$pane_count" -le 1 ]]; then
         tmux switch-client -t "${sess}:${widx}" 2>/dev/null
         exit 0
-        ;;
-    --multi-open)
-        # Reads newline-separated selections from stdin
-        while IFS= read -r line; do
-            target="${line##*$'\t|\t'}"
-            type="${target%%:*}"
-            rest="${target#*:}"
-            case "$type" in
-                sesh)
-                    name="$(basename "$rest")"
-                    tmux new-session -d -s "$name" -c "$rest" 2>/dev/null || true
-                    ;;
-                session) tmux switch-client -t "$rest" 2>/dev/null ;;
-                window)  tmux switch-client -t "$rest" 2>/dev/null ;;
-                docker)
-                    cid="${rest%%:*}"
-                    cname="${rest#*:}"
-                    tmux new-window -n "$cname" "docker exec -it $(printf '%q' "$cid") sh -c 'exec bash 2>/dev/null || exec sh'" 2>/dev/null
-                    ;;
-                ssh)
-                    tmux new-window -n "$rest" "ssh $(printf '%q' "$rest")" 2>/dev/null
-                    ;;
-            esac
-        done
-        exit 0
-        ;;
-    --multi-kill)
-        while IFS= read -r line; do
-            target="${line##*$'\t|\t'}"
-            type="${target%%:*}"
-            rest="${target#*:}"
-            case "$type" in
-                window)
-                    tmux kill-window -t "${rest%%:*}:${rest#*:}" 2>/dev/null
-                    ;;
-                session)
-                    tmux kill-session -t "$rest" 2>/dev/null
-                    ;;
-            esac
-        done
-        exit 0
-        ;;
-    --list-docker)  build_docker;  exit 0 ;;
-    --list-ssh)     build_ssh;     exit 0 ;;
-    --list-tags)
-        tag="${2:-}"
-        build_tagged "$tag"
-        exit 0
-        ;;
+    fi
+    pane_sel=$(tmux list-panes -t "${sess}:${widx}" \
+        -F "#{pane_index}  #{pane_current_command}  #{pane_current_path}  #{pane_width}x#{pane_height}#{?pane_active,  +,}" 2>/dev/null \
+        | fzf --ansi --layout=reverse --height=40% --prompt="Select pane: " \
+              --border=rounded --color="$FZF_COLORS" \
+              --preview "tmux capture-pane -p -t '${sess}:${widx}.{1}' -S -20 2>/dev/null" \
+              --preview-window='right:50%' 2>/dev/null)
+    [[ -z "$pane_sel" ]] && exit 0
+    pidx="${pane_sel%%  *}"
+    pidx="${pidx%% *}"
+    tmux select-pane -t "${sess}:${widx}.${pidx}" 2>/dev/null
+    tmux switch-client -t "${sess}:${widx}" 2>/dev/null
+}
+
+case "${1:-}" in
+    --list)              list_all; exit 0 ;;
+    --new-session)       new_session "${2:-}"; exit 0 ;;
+    --kill-target)        kill_target "${2:-}"; exit 0 ;;
+    --rename)            rename_target "${2:-}"; exit 0 ;;
+    --drill-panes)       drill_panes "${2:-}"; exit 0 ;;
 esac
 
-# ── Preview ({-1} = last field = metadata: "session:NAME" or "window:SESSION:IDX") ───
 read -r -d '' PREVIEW_CMD <<'PREVIEW'
 target={-1}
 type="${target%%:*}"
 rest="${target#*:}"
+
 if [ "$type" = "session" ]; then
     wins=$(tmux list-windows -t "$rest" \
-      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  ✦,}" 2>/dev/null)
+      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  +,}" 2>/dev/null)
     printf "\033[38;2;20;226;26m%s\033[0m\n\n" "$rest"
     printf "%s\n" "$wins"
-    printf "\n\033[38;2;51;51;51m─────────────────────────────\033[0m\n"
+    printf "\n\033[38;2;51;51;51m-----------------------------\033[0m\n"
     widx=$(tmux display-message -p -t "$rest" "#{window_index}" 2>/dev/null)
-    [ -n "$widx" ] && tmux capture-pane -p -t "${rest}:${widx}" -S -20 2>/dev/null \
+    [ -n "$widx" ] && tmux capture-pane -p -t "${rest}:${widx}" -S -25 2>/dev/null \
       || printf "preview unavailable\n"
 elif [ "$type" = "window" ]; then
     sess="${rest%%:*}"
     widx="${rest#*:}"
     wins=$(tmux list-windows -t "$sess" \
-      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  ✦,}" 2>/dev/null)
+      -F "  #{window_index}. #{window_name}  (#{pane_current_command})#{?window_active,  +,}" 2>/dev/null)
     printf "\033[38;2;20;226;26m%s\033[0m\n\n" "${sess}:${widx}"
     printf "%s\n" "$wins"
-    printf "\n\033[38;2;51;51;51m─────────────────────────────\033[0m\n"
-    tmux capture-pane -p -t "${sess}:${widx}" -S -20 2>/dev/null \
+    printf "\n\033[38;2;51;51;51m-----------------------------\033[0m\n"
+    tmux capture-pane -p -t "${sess}:${widx}" -S -25 2>/dev/null \
       || printf "preview unavailable\n"
-elif [ "$type" = "docker" ]; then
-    cid="${rest%%:*}"
-    cname="${rest#*:}"
-    printf "\033[38;2;20;226;26m %s\033[0m\n\n" "$cname"
-    docker inspect --format '  Image:   {{.Config.Image}}
-  Status:  {{.State.Status}}
-  Started: {{.State.StartedAt}}
-  Ports:   {{range $p, $c := .NetworkSettings.Ports}}{{$p}} {{end}}
-  Mounts:  {{range .Mounts}}{{.Source}}:{{.Destination}} {{end}}' "$cid" 2>/dev/null
-    printf "\n\033[38;2;51;51;51m────────────────────────────────\033[0m\n"
-    docker logs --tail 15 "$cid" 2>/dev/null
-elif [ "$type" = "ssh" ]; then
-    printf "\033[38;2;20;226;26m󰣀 %s\033[0m\n\n" "$rest"
-    # Show ssh_config details for this host
-    awk -v host="$rest" '
-        BEGIN { found=0 }
-        /^[Hh]ost / {
-            if (found) exit
-            split($0, a, " ")
-            for (i=2; i<=length(a); i++) { if (a[i] == host) found=1 }
-        }
-        found && !/^[Hh]ost / { print "  " $0 }
-    ' ~/.ssh/config 2>/dev/null
-elif [ "$type" = "sesh" ]; then
-    if git -C "$rest" rev-parse --git-dir >/dev/null 2>&1; then
-        branch=$(git -C "$rest" symbolic-ref --short HEAD 2>/dev/null \
-                 || git -C "$rest" rev-parse --short HEAD 2>/dev/null)
-        dirty=$(git -C "$rest" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$dirty" -gt 0 ]; then
-            dirty_mark="\033[38;2;255;100;80m  ✗ ${dirty} changed\033[0m"
-        else
-            dirty_mark="\033[38;2;20;226;26m  ✓\033[0m"
-        fi
-        printf "\033[38;2;20;226;26m %s\033[0m%b\n" "$branch" "$dirty_mark"
-        printf "\033[38;2;51;51;51m────────────────────────────────\033[0m\n"
-        git -C "$rest" log --color=always -8 \
-          --format="%C(dim)%h%C(reset)  %C(238)%ar%C(reset)  %s" 2>/dev/null
-        printf "\n\033[38;2;51;51;51m────────────────────────────────\033[0m\n"
-        if command -v onefetch >/dev/null 2>&1; then
-            onefetch "$rest" --no-title 2>/dev/null
-        else
-            sesh preview "$rest" 2>/dev/null
-        fi
-    else
-        sesh preview "$rest" 2>/dev/null || printf "no preview available\n"
-    fi
 fi
 PREVIEW
 
-CURR_SESS="$(tmux display-message -p '#S' 2>/dev/null || echo 'tmux')"  # kept for ctrl-d kill context
-HEADER="  Enter switch  •  Tab select  •  ^N new  •  [ prev section  •  ] next section
-  ^A all  •  ^J jump  •  ^W windows  •  ^G tags  •  ^X kill  •  ^D kill sess  •  ^R rename  •  ^S move win
-  ^B snap  •  ^O restore  •  ^/ preview  •  alt-↑↓ scroll"
-
-STATE_FILE="$(mktemp "${TMPDIR:-/tmp}/dvc-mode.XXXXXX")"
-trap 'rm -f "$STATE_FILE"' EXIT
-printf 'all\n' > "$STATE_FILE"
-
 selected=$(printf '' | fzf \
     --ansi \
-    --disabled \
     --layout=reverse \
-    --height=100% \
     --no-sort \
-    --multi \
-    --pointer='▶' \
-    --marker='◆' \
+    --pointer='>' \
     --prompt='  ' \
     --color="$FZF_COLORS" \
     --delimiter=$'\t|\t' \
     --with-nth=1 \
     --border=rounded \
-    --border-label=" 󰔎 Da Vinci Console " \
+    --border-label=" Da Vinci Console " \
     --border-label-pos=2 \
     --input-border=rounded \
-    --input-label='  Search ' \
+    --input-label=' Search ' \
     --input-label-pos=2 \
     --list-border=rounded \
+    --list-label=' Sessions ' \
+    --list-label-pos=2 \
     --preview-border=rounded \
-    --preview-label='  Preview ' \
+    --preview-label=' Tmux ' \
     --preview-label-pos=2 \
     --padding=0,1 \
     --info=inline-right \
-    --header-first \
-    --header "$HEADER" \
-    --bind "start:reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')" \
-    --bind "change:reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind 'tab:toggle+down,btab:toggle+up' \
+    --bind "start:reload-sync(bash '$SELF' --list)" \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
-    --bind "enter:transform:[[ {-1} == sep:* || {-1} == skip:* ]] && echo 'reload-sync(bash $SELF --render-mode $STATE_FILE {q})' || echo 'accept'" \
-    --bind "ctrl-n:transform:[[ {-1} == sesh:* ]] && echo 'execute-silent(bash \"$SELF\" --new-session {-1})+abort' || echo 'execute(read -p \"Session name: \" n && bash \"$SELF\" --new-blank-session \"\$n\")+abort'" \
-    --bind "ctrl-x:execute-silent(bash '$SELF' --kill-window {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind "ctrl-a:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' all)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label()" \
-    --bind "ctrl-j:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' jump)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Jump )" \
-    --bind "ctrl-w:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' windows)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Windows )" \
-    --bind "ctrl-g:execute-silent(bash '$SELF' --set-mode '$STATE_FILE' tags)+clear-query+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' '')+change-list-label(  Tags )" \
-    --bind "ctrl-d:execute-silent(bash -c 't={-1}; t=\"\${t#*:}\"; tmux kill-session -t \"\${t%%:*}\" 2>/dev/null')+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind "ctrl-s:execute(bash '$SELF' --move-window {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind "ctrl-b:execute-silent(bash '$SELF' --snapshot {-1})+reload-sync(bash '$SELF' --render-mode '$STATE_FILE' {q})" \
-    --bind "ctrl-o:execute(bash '$SELF' --restore-snapshot)+abort" \
-    --bind "]:transform:[[ \$(cat '$STATE_FILE' 2>/dev/null) == all ]] && bash '$SELF' --jump-section next {n} {q} || echo ignore" \
-    --bind "[:transform:[[ \$(cat '$STATE_FILE' 2>/dev/null) == all ]] && bash '$SELF' --jump-section prev {n} {q} || echo ignore" \
-    --preview-window 'right:50%' \
+    --bind "enter:transform:[[ {-1} == sep:* ]] && echo ignore || echo accept" \
+    --bind "ctrl-n:execute(bash -c 'read -r -p \"Session name: \" n; bash \"\$1\" --new-session \"\$n\"' _ '$SELF')+abort" \
+    --bind "ctrl-d:execute-silent(bash '$SELF' --kill-target {-1})+reload-sync(bash '$SELF' --list)" \
+    --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload-sync(bash '$SELF' --list)" \
+    --preview-window 'right,50%,border-rounded' \
     --preview "$PREVIEW_CMD" \
 )
 
 [[ -z "$selected" ]] && exit 0
-
-# Count selections — if multiple, batch-open them
-sel_count=$(echo "$selected" | wc -l | tr -d ' ')
-if [[ "$sel_count" -gt 1 ]]; then
-    echo "$selected" | bash "$SELF" --multi-open
-    exit 0
-fi
 
 target="${selected##*$'\t|\t'}"
 type="${target%%:*}"
@@ -761,7 +265,6 @@ rest="${target#*:}"
 
 case "$type" in
     window)
-        # Drill down into panes if the window has multiple
         sess="${rest%%:*}"
         widx="${rest#*:}"
         pane_count=$(tmux list-panes -t "${sess}:${widx}" 2>/dev/null | wc -l | tr -d ' ')
@@ -771,14 +274,6 @@ case "$type" in
             tmux switch-client -t "$rest"
         fi
         ;;
-    session)    tmux switch-client -t "$rest" ;;
-    sesh)       "$SESH" connect "$rest" ;;
-    docker)
-        cid="${rest%%:*}"
-        cname="${rest#*:}"
-        tmux new-window -n "$cname" "docker exec -it $(printf '%q' "$cid") sh -c 'exec bash 2>/dev/null || exec sh'"
-        ;;
-    ssh)        tmux new-window -n "$rest" "ssh $(printf '%q' "$rest")" ;;
-    sep|skip)   : ;;
-    *)          "$SESH" connect "$target" ;;
+    session) tmux switch-client -t "$rest" ;;
+    sep|skip) : ;;
 esac
