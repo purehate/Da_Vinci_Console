@@ -8,17 +8,28 @@ SEP=$'\t|\t'
 command -v tmux >/dev/null 2>&1 || { echo "tmux not found" >&2; exit 1; }
 command -v fzf >/dev/null 2>&1 || { echo "fzf not found" >&2; exit 1; }
 
-C_GREEN="\033[38;2;20;226;26m"
-C_GREY="\033[38;2;123;132;150m"
-C_DIM="\033[38;2;51;51;51m"
-C_WHITE="\033[38;2;220;220;220m"
+if [ -r "$HOME/.config/ts/palette.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$HOME/.config/ts/palette.sh"
+fi
+
+ansi_fg() {
+    local hex="${1#\#}"
+    printf '\033[38;2;%d;%d;%dm' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+C_GREEN="$(ansi_fg "${TS_GIBSON:-#14E21A}")"
+C_BLUE="$(ansi_fg "${TS_PHANTOM:-#1C47FF}")"
+C_GREY="$(ansi_fg "${TS_MUTED:-#666666}")"
+C_DIM="$(ansi_fg "${TS_DIM:-#333333}")"
+C_WHITE="$(ansi_fg "${TS_FG:-#EDF1F3}")"
 C_BRIGHT="\033[38;2;255;255;255m"
-C_RED="\033[38;2;255;100;80m"
-C_YELLOW="\033[38;2;255;200;60m"
-C_BORDER="\033[38;2;36;176;48m"
+C_RED="$(ansi_fg "${TS_ANSI_RED:-#FF3333}")"
+C_YELLOW="$(ansi_fg "${TS_CEREAL:-#E8FD2E}")"
+C_BORDER="$(ansi_fg "${TS_BORDER:-#00422C}")"
 C_RESET="\033[0m"
 
-FZF_COLORS="border:#24b030,fg:#b3b3b3,hl:#14E21A,fg+:#e6e6e6,bg+:-1,hl+:#14E21A,pointer:#14E21A,header:#7b8496,marker:#14E21A,spinner:#14E21A,prompt:#14E21A,gutter:-1,label:#24b030,bg:-1,preview-bg:-1"
+FZF_COLORS="${TS_FZF_COLORS:-border:#00422C,fg:#EDF1F3,hl:#14E21A,fg+:#FFFFFF,bg+:#00422C,hl+:#14E21A,pointer:#14E21A,header:#666666,marker:#E8FD2E,spinner:#33CCCC,prompt:#14E21A,gutter:-1,label:#14E21A,bg:-1,preview-bg:-1,preview-border:#00422C,input-border:#00422C,list-border:#00422C}"
 
 icon_for() {
     local n="${1,,}"
@@ -72,7 +83,7 @@ section_sep() {
     local label="$1" w body
     w=$(div_width)
     body=$(repeat_str '-' $(( w - ${#label} - 4 )))
-    printf "${C_BORDER}--${C_RESET} ${C_WHITE}%s${C_RESET} ${C_BORDER}%s${C_RESET}${SEP}sep:section\n" "$label" "$body"
+    printf "${C_GREEN}>${C_RESET} ${C_WHITE}%s${C_RESET} ${C_BORDER}%s${C_RESET}${SEP}sep:section\n" "$label" "$body"
 }
 
 session_div() {
@@ -96,7 +107,7 @@ build_sessions() {
         age_str=""
         [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity") idle${C_RESET}"
 
-        printf "${C_BRIGHT}%s%s${C_RESET}  ${C_GREY}%s${C_RESET}%b%b${SEP}session:%s\n" \
+        printf "${C_BRIGHT}%s%s${C_RESET}  ${C_BLUE}%s${C_RESET}%b%b${SEP}session:%s\n" \
             "${icon:+$icon }" "$sname" "$wlabel" "$attached_mark" "$age_str" "$sname"
 
         while IFS='|' read -r widx wname wcmd wactive wpath panes; do
@@ -200,15 +211,78 @@ target={-1}
 type="${target%%:*}"
 rest="${target#*:}"
 
+if [ -r "$HOME/.config/ts/palette.sh" ]; then
+    . "$HOME/.config/ts/palette.sh"
+fi
+
+ansi_fg() {
+    local hex="${1#\#}"
+    printf '\033[38;2;%d;%d;%dm' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+green="$(ansi_fg "${TS_GIBSON:-#14E21A}")"
+blue="$(ansi_fg "${TS_PHANTOM:-#1C47FF}")"
+yellow="$(ansi_fg "${TS_CEREAL:-#E8FD2E}")"
+gray="$(ansi_fg "${TS_MUTED:-#666666}")"
+white="$(ansi_fg "${TS_FG:-#EDF1F3}")"
+reset=$'\033[0m'
+
+short_path() {
+    case "$1" in
+        "$HOME"*) printf '~%s' "${1#"$HOME"}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+preview_session() {
+    local sess="$1" attached created windows active_window active_cmd active_path
+    attached=$(tmux display-message -p -t "$sess" "#{?session_attached,attached,detached}" 2>/dev/null)
+    created=$(tmux display-message -p -t "$sess" "#{session_created_string}" 2>/dev/null)
+    windows=$(tmux display-message -p -t "$sess" "#{session_windows}" 2>/dev/null)
+    active_window=$(tmux display-message -p -t "$sess" "#{window_index}:#{window_name}" 2>/dev/null)
+    active_cmd=$(tmux display-message -p -t "$sess" "#{pane_current_command}" 2>/dev/null)
+    active_path=$(tmux display-message -p -t "$sess" "#{pane_current_path}" 2>/dev/null)
+
+    printf "%sSession%s %s%s%s\n" "$green" "$reset" "$white" "$sess" "$reset"
+    printf "%sState%s   %s%s%s  %s%s windows%s\n" "$gray" "$reset" "$blue" "$attached" "$reset" "$yellow" "${windows:-0}" "$reset"
+    [[ -n "$created" ]] && printf "%sCreated%s %s\n" "$gray" "$reset" "$created"
+    printf "%sActive%s  %s%s%s  %s%s%s\n" "$gray" "$reset" "$white" "${active_window:-unknown}" "$reset" "$gray" "${active_cmd:-unknown}" "$reset"
+    [[ -n "$active_path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(short_path "$active_path")"
+    printf "%s\nWindows%s\n" "$green" "$reset"
+    tmux list-windows -t "$sess" \
+        -F "  #{?window_active,+, } #{window_index}:#{window_name}  #{window_panes}p  #{pane_current_command}  #{pane_current_path}" 2>/dev/null |
+        while IFS= read -r line; do
+            case "$line" in
+                "  +"*) printf "%s%s%s\n" "$green" "$(short_path "$line")" "$reset" ;;
+                *) printf "%s%s%s\n" "$gray" "$(short_path "$line")" "$reset" ;;
+            esac
+        done
+
+    printf "%s\nActive pane%s\n" "$green" "$reset"
+    tmux capture-pane -p -t "$sess" -S -24 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -24
+}
+
+preview_window() {
+    local sess="$1" widx="$2" name panes cmd path
+    name=$(tmux display-message -p -t "${sess}:${widx}" "#{window_name}" 2>/dev/null)
+    panes=$(tmux display-message -p -t "${sess}:${widx}" "#{window_panes}" 2>/dev/null)
+    cmd=$(tmux display-message -p -t "${sess}:${widx}" "#{pane_current_command}" 2>/dev/null)
+    path=$(tmux display-message -p -t "${sess}:${widx}" "#{pane_current_path}" 2>/dev/null)
+
+    printf "%sWindow%s  %s%s:%s %s%s\n" "$green" "$reset" "$white" "$sess" "$widx" "${name:-unknown}" "$reset"
+    printf "%sPanes%s   %s%s%s\n" "$gray" "$reset" "$yellow" "${panes:-0}" "$reset"
+    printf "%sActive%s  %s%s%s\n" "$gray" "$reset" "$white" "${cmd:-unknown}" "$reset"
+    [[ -n "$path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(short_path "$path")"
+    printf "%s\nPane output%s\n" "$green" "$reset"
+    tmux capture-pane -p -t "${sess}:${widx}" -S -35 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -35
+}
+
 if [ "$type" = "session" ]; then
-    widx=$(tmux display-message -p -t "$rest" "#{window_index}" 2>/dev/null)
-    [ -n "$widx" ] && tmux capture-pane -p -t "${rest}:${widx}" -S -45 2>/dev/null \
-      || printf "preview unavailable\n"
+    preview_session "$rest"
 elif [ "$type" = "window" ]; then
     sess="${rest%%:*}"
     widx="${rest#*:}"
-    tmux capture-pane -p -t "${sess}:${widx}" -S -45 2>/dev/null \
-      || printf "preview unavailable\n"
+    preview_window "$sess" "$widx"
 fi
 PREVIEW
 
@@ -235,6 +309,7 @@ selected=$(printf '' | fzf \
     --preview-label-pos=2 \
     --padding=0,1 \
     --info=inline-right \
+    --header $'  Enter attach  •  ^N new  •  ^D kill  •  ^R rename  •  ^/ preview  •  alt-↑↓ scroll' \
     --bind "start:reload-sync(bash '$SELF' --list)" \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
