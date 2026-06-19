@@ -340,6 +340,7 @@ fi
 PREVIEW
 
 selected=$(printf '' | fzf \
+    --height '~100%' \
     --ansi \
     --layout=reverse \
     --no-sort \
