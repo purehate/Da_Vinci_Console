@@ -343,7 +343,7 @@ selected=$(printf '' | fzf \
     --ansi \
     --layout=reverse \
     --no-sort \
-    --pointer='' \
+    --pointer='>' \
     --marker='' \
     --gutter=' ' \
     --prompt='  ' \
