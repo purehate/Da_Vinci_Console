@@ -343,7 +343,9 @@ selected=$(printf '' | fzf \
     --ansi \
     --layout=reverse \
     --no-sort \
-    --pointer='>' \
+    --pointer='' \
+    --marker='' \
+    --gutter=' ' \
     --prompt='  ' \
     --no-scrollbar \
     --color="$FZF_COLORS" \
