@@ -345,6 +345,7 @@ selected=$(printf '' | fzf \
     --no-sort \
     --pointer='>' \
     --prompt='  ' \
+    --no-scrollbar \
     --color="$FZF_COLORS" \
     --delimiter=$'\t|\t' \
     --with-nth=1 \
