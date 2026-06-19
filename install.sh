@@ -22,7 +22,7 @@ echo ""
 echo "── tmux.conf ────────────────────────────────────────────────"
 echo "Add this to your tmux.conf (or see extras/tmux.conf):"
 echo ""
-echo "  bind s display-popup -B -x C -y C -w 72% -h 72% -s \"bg=default\" -E \"$DEST/$INSTALLED\""
+echo "  bind s display-popup -b rounded -x C -y C -w 60% -h 44% -s \"bg=default\" -S \"fg=#14e21a\" -T \"#[fg=#14e21a]#[fg=#000000,bg=#14e21a] Da Vinci Console #[fg=#14e21a,bg=default]#[default]\" -E \"$DEST/$INSTALLED\""
 echo ""
 
 # ── Dependency check ─────────────────────────────────────────────────────────

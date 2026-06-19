@@ -36,7 +36,7 @@ The installer copies `da-vinci-console.sh` to `~/.config/tmux/sesh_picker.sh`.
 Add to your `tmux.conf`:
 
 ```tmux
-bind s display-popup -B -x C -y C -w 72% -h 72% -s "bg=default" -E "~/.config/tmux/sesh_picker.sh"
+bind s display-popup -b rounded -x C -y C -w 60% -h 44% -s "bg=default" -S "fg=#14e21a" -T "#[fg=#14e21a]#[fg=#000000,bg=#14e21a] Da Vinci Console #[fg=#14e21a,bg=default]#[default]" -E "~/.config/tmux/sesh_picker.sh"
 ```
 
 Or see [`extras/tmux.conf`](extras/tmux.conf).

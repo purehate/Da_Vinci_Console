@@ -18,7 +18,14 @@ ansi_fg() {
     printf '\033[38;2;%d;%d;%dm' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
 }
 
+ansi_bg() {
+    local hex="${1#\#}"
+    printf '\033[48;2;%d;%d;%dm' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
 C_GREEN="$(ansi_fg "${TS_GIBSON:-#14E21A}")"
+C_GREEN_BG="$(ansi_bg "${TS_GIBSON:-#14E21A}")"
+C_BLACK="$(ansi_fg "#000000")"
 C_BLUE="$(ansi_fg "${TS_PHANTOM:-#1C47FF}")"
 C_GREY="$(ansi_fg "${TS_MUTED:-#666666}")"
 C_DIM="$(ansi_fg "${TS_DIM:-#333333}")"
@@ -30,6 +37,10 @@ C_BORDER="$(ansi_fg "${TS_BORDER:-#00422C}")"
 C_RESET="\033[0m"
 
 FZF_COLORS="${TS_FZF_COLORS:-border:#00422C,fg:#EDF1F3,hl:#14E21A,fg+:#FFFFFF,bg+:#00422C,hl+:#14E21A,pointer:#14E21A,header:#666666,marker:#E8FD2E,spinner:#33CCCC,prompt:#14E21A,gutter:-1,label:#14E21A,bg:-1,preview-bg:-1,preview-border:#00422C,input-border:#00422C,list-border:#00422C}"
+
+pill_label() {
+    printf '%b%b %s %b%b' "$C_GREEN" "$C_GREEN_BG$C_BLACK" "$1" "$C_RESET$C_GREEN" "$C_RESET"
+}
 
 icon_for() {
     local n="${1,,}"
@@ -50,6 +61,27 @@ icon_for() {
 
 short_path() {
     [[ "$1" == "$HOME"* ]] && printf '~%s' "${1#"$HOME"}" || printf '%s' "$1"
+}
+
+display_path() {
+    local p="$1" dir base parent max=34
+    p=$(short_path "$p")
+    (( ${#p} <= max )) && { printf '%s' "$p"; return; }
+
+    base="${p##*/}"
+    dir="${p%/*}"
+    [[ "$dir" == "$p" ]] && { printf '%s' "$p"; return; }
+
+    parent="${dir##*/}"
+    if [[ "$dir" == "~" ]]; then
+        printf '~/%s' "$base"
+    elif [[ "$p" == "~/"* ]]; then
+        printf '~/.../%s/%s' "$parent" "$base"
+    elif [[ "$p" == /* ]]; then
+        printf '/.../%s/%s' "$parent" "$base"
+    else
+        printf '.../%s/%s' "$parent" "$base"
+    fi
 }
 
 relative_time() {
@@ -114,7 +146,7 @@ build_sessions() {
             local wicon pshort active_mark pane_mark
             wicon=$(icon_for "$wcmd")
             [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
-            pshort=$(short_path "$wpath")
+            pshort=$(display_path "$wpath")
             active_mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}+${C_RESET}" || echo "")
             pane_mark=$([[ "$panes" == "1" ]] && echo "" || echo " ${C_YELLOW}${panes}p${C_RESET}")
             printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
@@ -131,7 +163,6 @@ build_sessions() {
 }
 
 list_all() {
-    section_sep " Tmux Sessions "
     build_sessions
 }
 
@@ -226,11 +257,29 @@ yellow="$(ansi_fg "${TS_CEREAL:-#E8FD2E}")"
 gray="$(ansi_fg "${TS_MUTED:-#666666}")"
 white="$(ansi_fg "${TS_FG:-#EDF1F3}")"
 reset=$'\033[0m'
+empty="${gray}(no pane output)${reset}"
 
 short_path() {
     case "$1" in
         "$HOME"*) printf '~%s' "${1#"$HOME"}" ;;
         *) printf '%s' "$1" ;;
+    esac
+}
+
+display_path() {
+    p=$(short_path "$1")
+    max=42
+    [ "${#p}" -le "$max" ] && { printf '%s' "$p"; return; }
+
+    base="${p##*/}"
+    dir="${p%/*}"
+    [ "$dir" = "$p" ] && { printf '%s' "$p"; return; }
+
+    parent="${dir##*/}"
+    case "$p" in
+        "~/"*) printf '~/.../%s/%s' "$parent" "$base" ;;
+        /*)    printf '/.../%s/%s' "$parent" "$base" ;;
+        *)     printf '.../%s/%s' "$parent" "$base" ;;
     esac
 }
 
@@ -247,7 +296,7 @@ preview_session() {
     printf "%sState%s   %s%s%s  %s%s windows%s\n" "$gray" "$reset" "$blue" "$attached" "$reset" "$yellow" "${windows:-0}" "$reset"
     [[ -n "$created" ]] && printf "%sCreated%s %s\n" "$gray" "$reset" "$created"
     printf "%sActive%s  %s%s%s  %s%s%s\n" "$gray" "$reset" "$white" "${active_window:-unknown}" "$reset" "$gray" "${active_cmd:-unknown}" "$reset"
-    [[ -n "$active_path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(short_path "$active_path")"
+    [[ -n "$active_path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(display_path "$active_path")"
     printf "%s\nWindows%s\n" "$green" "$reset"
     tmux list-windows -t "$sess" \
         -F "  #{?window_active,+, } #{window_index}:#{window_name}  #{window_panes}p  #{pane_current_command}  #{pane_current_path}" 2>/dev/null |
@@ -259,7 +308,8 @@ preview_session() {
         done
 
     printf "%s\nActive pane%s\n" "$green" "$reset"
-    tmux capture-pane -p -t "$sess" -S -24 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -24
+    output=$(tmux capture-pane -p -t "$sess" -S -24 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -24)
+    [ -n "$output" ] && printf "%s\n" "$output" || printf "%s\n" "$empty"
 }
 
 preview_window() {
@@ -272,9 +322,10 @@ preview_window() {
     printf "%sWindow%s  %s%s:%s %s%s\n" "$green" "$reset" "$white" "$sess" "$widx" "${name:-unknown}" "$reset"
     printf "%sPanes%s   %s%s%s\n" "$gray" "$reset" "$yellow" "${panes:-0}" "$reset"
     printf "%sActive%s  %s%s%s\n" "$gray" "$reset" "$white" "${cmd:-unknown}" "$reset"
-    [[ -n "$path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(short_path "$path")"
+    [[ -n "$path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(display_path "$path")"
     printf "%s\nPane output%s\n" "$green" "$reset"
-    tmux capture-pane -p -t "${sess}:${widx}" -S -35 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -35
+    output=$(tmux capture-pane -p -t "${sess}:${widx}" -S -35 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -35)
+    [ -n "$output" ] && printf "%s\n" "$output" || printf "%s\n" "$empty"
 }
 
 if [ "$type" = "session" ]; then
@@ -283,6 +334,8 @@ elif [ "$type" = "window" ]; then
     sess="${rest%%:*}"
     widx="${rest#*:}"
     preview_window "$sess" "$widx"
+else
+    printf "%sNo tmux target selected%s\n" "$gray" "$reset"
 fi
 PREVIEW
 
@@ -296,20 +349,18 @@ selected=$(printf '' | fzf \
     --delimiter=$'\t|\t' \
     --with-nth=1 \
     --border=rounded \
-    --border-label=" Da Vinci Console " \
-    --border-label-pos=2 \
     --input-border=rounded \
-    --input-label=' Search ' \
+    --input-label="$(pill_label 'Search')" \
     --input-label-pos=2 \
     --list-border=rounded \
-    --list-label=' Sessions ' \
+    --list-label="$(pill_label 'Sessions')" \
     --list-label-pos=2 \
     --preview-border=rounded \
-    --preview-label=' Tmux ' \
+    --preview-label="$(pill_label 'Tmux')" \
     --preview-label-pos=2 \
     --padding=0,1 \
     --info=inline-right \
-    --header $'  Enter attach  •  ^N new  •  ^D kill  •  ^R rename  •  ^/ preview  •  alt-↑↓ scroll' \
+    --header $'  Enter attach  ^N new  ^R rename  ^D kill  ^/ preview' \
     --bind "start:reload-sync(bash '$SELF' --list)" \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'alt-up:preview-up' \
@@ -318,7 +369,7 @@ selected=$(printf '' | fzf \
     --bind "ctrl-n:execute(bash -c 'read -r -p \"Session name: \" n; bash \"\$1\" --new-session \"\$n\"' _ '$SELF')+abort" \
     --bind "ctrl-d:execute-silent(bash '$SELF' --kill-target {-1})+reload-sync(bash '$SELF' --list)" \
     --bind "ctrl-r:execute(bash '$SELF' --rename {-1})+reload-sync(bash '$SELF' --list)" \
-    --preview-window 'right,50%,border-rounded' \
+    --preview-window 'hidden,right,42%,border-rounded' \
     --preview "$PREVIEW_CMD" \
 )
 
