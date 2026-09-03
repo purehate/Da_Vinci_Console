@@ -12,9 +12,9 @@ live preview.
 ## Features
 
 - Tmux sessions with nested windows
-- **Agent-aware**: each window shows the coding agent running in it and a
-  status light (◐ focused / ● working / ○ idle), plus a herdr-style agents
-  header at the top of the picker
+- **Agent-aware**: each coding agent is nested directly under its own
+  window with a status light (◐ focused / ● working / ○ idle). No separate
+  agents panel — they live with their window and are clickable to jump to it
 - Live preview of the selected session or window
 - Pane drill-down when a window has multiple panes
 - Create, rename, and kill directly from the picker
@@ -65,7 +65,7 @@ The repo ships a complete shareable config in
 agent dashboard:
 
 ```
-1:dotfiles | pi ◐   2:network | claude ○   3:updates   4:api | codex ●
+1:acme | pi ◐   2:api | claude ○   3:workers   4:docs | codex ●
 ```
 
 Each window pill shows `| agent ⦁`; click a pill to jump to that window. No
@@ -94,6 +94,8 @@ regardless of terminal transparency.
 | `Ctrl-N` | Create a new session |
 | `Ctrl-R` | Rename selected session/window |
 | `Ctrl-D` | Kill selected session/window |
+| `Ctrl-G` | Filter to agent windows only |
+| `Ctrl-T` | Show all sessions/windows |
 | `Ctrl-/` | Toggle preview |
 | `Alt-Up` / `Alt-Down` | Scroll preview |
 | `Esc` / `Ctrl-C` | Exit |
