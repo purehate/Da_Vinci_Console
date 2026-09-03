@@ -10,7 +10,6 @@ AGENTS_DIR="$SELF_DIR/agents"
 # Live agent state (populated by load_agents, read by the list builders).
 declare -A pane_agent
 declare -A sess_agents
-declare -a agent_rows
 
 command -v tmux >/dev/null 2>&1 || { echo "tmux not found" >&2; exit 1; }
 command -v fzf >/dev/null 2>&1 || { echo "fzf not found" >&2; exit 1; }
@@ -157,7 +156,6 @@ load_agents() {
     while IFS='|' read -r name sess widx wname paneid pid light; do
         [[ -n "$name" ]] || continue
         pane_agent["$paneid"]="$name|$light"
-        agent_rows+=("$name|$light|$sess|$widx|$wname")
         if [[ -z "${sess_agents[$sess]:-}" ]]; then
             sess_agents["$sess"]="$name"
         elif [[ " ${sess_agents[$sess]} " != *" $name "* ]]; then
@@ -166,38 +164,17 @@ load_agents() {
     done < <(bash "$AGENTS_DIR/agents_state.sh" 2>/dev/null)
 }
 
-# herdr-style "jump to an agent" section. Each row is a selectable window target.
-emit_agents_section() {
-    local row name light sess widx wname ico acol
-    if (( ${#agent_rows[@]} == 0 )); then
-        return 0
-    fi
-    printf "${C_GREEN}>${C_RESET} ${C_WHITE}Agents${C_RESET}${SEP}sep:agents\n"
-    for row in "${agent_rows[@]}"; do
-        IFS='|' read -r name light sess widx wname <<< "$row"
-        ico="$(icon_for "$name")"
-        ico="${ico:- }"
-        acol="$(light_color "$light")"
-        printf "  ${C_BLUE}%s${C_RESET} ${C_WHITE}%s${C_RESET} ${acol}  ${C_GREY}%s:%s${C_RESET}  ${C_DIM}%s${C_RESET}${SEP}window:%s:%s\n" \
-            "$ico" "$name" "$sess" "$widx" "$wname" "$sess" "$widx"
-    done
-}
-
 build_sessions() {
     local first=1 any=0
 
     load_agents
 
-    # herdr-style jump section, always shown first
-    emit_agents_section
-
-    # Agent-only view (ctrl-g): the jump section is all we show.
-    if [[ "${AGENTS_ONLY:-0}" == "1" ]]; then
-        return 0
-    fi
-
     local sname wins attached activity icon wlabel attached_mark age_str sessag
     while IFS='|' read -r sname wins attached activity; do
+        # In agent-only view (ctrl-g), skip sessions with no agents.
+        if [[ "${AGENTS_ONLY:-0}" == "1" && -z "${sess_agents[$sname]:-}" ]]; then
+            continue
+        fi
         any=1
         [[ "$first" == "1" ]] && first=0 || session_div
 
@@ -214,21 +191,23 @@ build_sessions() {
         printf "${C_BRIGHT}%s%s${C_RESET}  ${C_BLUE}%s${C_RESET}%s%b%b${SEP}session:%s\n" \
             "${icon:+$icon }" "$sname" "$wlabel" "$sessag" "$attached_mark" "$age_str" "$sname"
 
-        local widx wname wcmd wactive wpath panes wpaneid wicon pshort active_mark pane_mark wagent an al
+        local widx wname wcmd wactive wpath panes wpaneid wicon pshort active_mark pane_mark an al
         while IFS='|' read -r widx wname wcmd wactive wpath panes wpaneid; do
+            # In agent-only view, keep only windows running an agent.
+            [[ "${AGENTS_ONLY:-0}" == "1" && -z "${pane_agent[$wpaneid]:-}" ]] && continue
             wicon=$(icon_for "$wcmd")
             [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
             pshort=$(display_path "$wpath")
             active_mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}+${C_RESET}" || echo "")
             pane_mark=$([[ "$panes" == "1" ]] && echo "" || echo " ${C_YELLOW}${panes}p${C_RESET}")
-            wagent=""
+            printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
+                "${wicon:+$wicon }" "$wname" "$sname" "$widx" "$wcmd" "$pshort" "$pane_mark" "$active_mark" "$sname" "$widx"
+            # Agent nested directly under its window (click to jump).
             if [[ -n "${pane_agent[$wpaneid]:-}" ]]; then
                 an="${pane_agent[$wpaneid]%%|*}"
                 al="$(light_color "${pane_agent[$wpaneid]##*|}")"
-                wagent=" ${C_BLUE}| ${an}${C_RESET} ${al}"
+                printf "     ${C_DIM}└${C_RESET} ${C_BLUE}%s${C_RESET} ${al}${SEP}window:%s:%s\n" "$an" "$sname" "$widx"
             fi
-            printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}%s  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
-                "${wicon:+$wicon }" "$wname" "$wagent" "$sname" "$widx" "$wcmd" "$pshort" "$pane_mark" "$active_mark" "$sname" "$widx"
         done < <(tmux list-windows -t "$sname" \
             -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}|#{pane_id}" 2>/dev/null)
     done < <(tmux list-sessions \
