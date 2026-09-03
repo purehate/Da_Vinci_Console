@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — install da-vinci-console to ~/.config/tmux/
+# install.sh — install da-vinci-console + agents to ~/.config/tmux/
 set -euo pipefail
 
 DEST="${1:-$HOME/.config/tmux}"
@@ -14,18 +14,34 @@ fi
 mkdir -p "$DEST"
 cp "$SRC" "$DEST/$INSTALLED"
 chmod +x "$DEST/$INSTALLED"
-
 echo "✓ Installed: $DEST/$INSTALLED"
+
+# ── Agents module (herdr-style detection) ──────────────────────────────────
+# window_agent.sh  -> annotates each window pill in the status line
+# agents_state.sh  -> feeds the picker's agents header + window tags
+# lib.sh           -> shared watch-list + detection
+# jump.sh          -> <prefix>+a fzf picker (optional)
+if [[ -d "agents" ]]; then
+    mkdir -p "$DEST/agents"
+    cp agents/*.sh "$DEST/agents/"
+    chmod +x "$DEST"/agents/*.sh
+    echo "✓ Installed: $DEST/agents/ (window_agent.sh, agents_state.sh, lib.sh, jump.sh)"
+fi
 echo ""
 
-# ── tmux.conf snippet ─────────────────────────────────────────────────────────
+# ── tmux.conf ───────────────────────────────────────────────────────────────
 echo "── tmux.conf ────────────────────────────────────────────────"
-echo "Add this to your tmux.conf (or see extras/tmux.conf):"
+echo "The repo ships a full shareable config in extras/tmux.conf that wires"
+echo "the agent window pills + the picker. Install it with (back up first!):"
 echo ""
-echo "  bind s display-popup -b rounded -x C -y C -w 60% -h 44% -s \"bg=default\" -S \"fg=#14e21a\" -T \"#[fg=#14e21a]#[fg=#000000,bg=#14e21a] Da Vinci Console #[fg=#14e21a,bg=default]#[default]\" -E \"$DEST/$INSTALLED\""
+echo "  cp extras/tmux.conf $DEST/tmux.conf   # then <prefix>+r to reload"
+echo ""
+echo "Or just add the picker binding to your existing tmux.conf:"
+echo ""
+echo "  bind-key s display-popup -B -x C -y C -w 72% -h 72% -s \"bg=default\" -E \"$DEST/$INSTALLED\""
 echo ""
 
-# ── Dependency check ─────────────────────────────────────────────────────────
+# ── Dependency check ────────────────────────────────────────────────────────
 echo "── Dependencies ─────────────────────────────────────────────"
 for cmd in tmux fzf; do
     if command -v "$cmd" >/dev/null 2>&1; then

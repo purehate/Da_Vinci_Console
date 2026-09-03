@@ -1,18 +1,44 @@
 # Da Vinci Console
 
-A focused tmux session picker built with `fzf`.
+A focused tmux session picker built with `fzf` — plus a **herdr-style agent
+dashboard** that shows which coding agents are running and where, all inside
+tmux.
 
-It only cares about tmux: sessions, windows, panes, and a good-looking live preview.
+It only cares about tmux: sessions, windows, panes, agents, and a good-looking
+live preview.
 
 ![Da Vinci Console screenshot](assets/screenshot.png)
 
 ## Features
 
 - Tmux sessions with nested windows
+- **Agent-aware**: each window shows the coding agent running in it and a
+  status light (◐ focused / ● working / ○ idle), plus a herdr-style agents
+  header at the top of the picker
 - Live preview of the selected session or window
 - Pane drill-down when a window has multiple panes
 - Create, rename, and kill directly from the picker
-- Small key set so the UI stays fast to read
+- A shareable `extras/tmux.conf` that puts the same agent status lights in your
+  tmux status-line window pills — so agents are visible *everywhere*, not just
+  in the picker
+
+## How it works
+
+Agents are detected by walking each window pane's process tree for known agent
+command names (`pi claude codex opencode gemini aider cursor-agent grok
+continue qwen-code` — override with `TMUX_AGENTS`). "Working" is approximated
+by CPU-time growth between refreshes.
+
+The detection logic lives in `agents/`, shared by both the picker and the
+tmux status line:
+
+```
+agents/
+├── lib.sh            # shared watch-list + detection
+├── agents_state.sh   # all agents + status lights (feeds the picker)
+├── window_agent.sh   # " | pi ●" for one window (feeds the status line)
+└── jump.sh           # <prefix>+a fzf picker across all agents
+```
 
 ## Requirements
 
@@ -29,17 +55,32 @@ cd Da_Vinci_Console
 ./install.sh
 ```
 
-The installer copies `da-vinci-console.sh` to `~/.config/tmux/sesh_picker.sh`.
+The installer copies the picker to `~/.config/tmux/sesh_picker.sh` and the
+agent module to `~/.config/tmux/agents/`.
 
-## Tmux Binding
+## Tmux status line (agents in the window pills)
 
-Add to your `tmux.conf`:
+The repo ships a complete shareable config in
+[`extras/tmux.conf`](extras/tmux.conf) that turns your status line into an
+agent dashboard:
 
-```tmux
-bind s display-popup -b rounded -x C -y C -w 60% -h 44% -s "bg=default" -S "fg=#14e21a" -T "#[fg=#14e21a]#[fg=#000000,bg=#14e21a] Da Vinci Console #[fg=#14e21a,bg=default]#[default]" -E "~/.config/tmux/sesh_picker.sh"
+```
+1:dotfiles | pi ◐   2:network | claude ○   3:updates   4:api | codex ●
 ```
 
-Or see [`extras/tmux.conf`](extras/tmux.conf).
+Each window pill shows `| agent ⦁`; click a pill to jump to that window. No
+agent → the pill looks normal.
+
+```bash
+cp extras/tmux.conf ~/.config/tmux/tmux.conf   # back up yours first!
+tmux source-file ~/.config/tmux/tmux.conf       # or <prefix>+r
+```
+
+Or just add the picker binding to your existing config:
+
+```tmux
+bind-key s display-popup -B -x C -y C -w 72% -h 72% -s "bg=default" -E "~/.config/tmux/sesh_picker.sh"
+```
 
 ## Keybindings
 
@@ -53,6 +94,14 @@ Or see [`extras/tmux.conf`](extras/tmux.conf).
 | `Alt-Up` / `Alt-Down` | Scroll preview |
 | `Esc` / `Ctrl-C` | Exit |
 
+## Agent status lights
+
+- **◐** — focused (the window/pane you're viewing)
+- **●** — working (CPU time grew since last refresh)
+- **○** — idle
+
 ## Icons
 
-Icons are intentionally simple ASCII markers so the picker works cleanly without a Nerd Font. Edit `icon_for()` in `da-vinci-console.sh` if you want custom labels for specific sessions, windows, or commands.
+Icons are intentionally simple ASCII markers so the picker works cleanly
+without a Nerd Font. Agent windows map to a letter (`pi`→P, `claude`→C,
+`codex`→X, ...). Edit `icon_for()` in `da-vinci-console.sh` to customise.

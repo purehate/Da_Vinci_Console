@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# da-vinci-console.sh - tmux session/window picker
+# da-vinci-console.sh - tmux session/window/agent picker
 set -u
 
-SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SELF="$SELF_DIR/$(basename "${BASH_SOURCE[0]}")"
 SEP=$'\t|\t'
+AGENTS_DIR="$SELF_DIR/agents"
+
+# Live agent state (populated by load_agents, read by the list builders).
+declare -A pane_agent
+declare -A sess_agents
+declare -a agent_rows
 
 command -v tmux >/dev/null 2>&1 || { echo "tmux not found" >&2; exit 1; }
 command -v fzf >/dev/null 2>&1 || { echo "fzf not found" >&2; exit 1; }
@@ -34,7 +41,7 @@ C_BRIGHT="\033[38;2;255;255;255m"
 C_RED="$(ansi_fg "${TS_ANSI_RED:-#FF3333}")"
 C_YELLOW="$(ansi_fg "${TS_CEREAL:-#E8FD2E}")"
 C_BORDER="$(ansi_fg "${TS_BORDER:-#00422C}")"
-C_RESET="\033[0m"
+C_RESET=$'\033[0m'
 
 FZF_COLORS="${TS_FZF_COLORS:-border:#00422C,fg:#EDF1F3,hl:#14E21A,fg+:#FFFFFF,bg+:#00422C,hl+:#14E21A,pointer:#14E21A,header:#666666,marker:#E8FD2E,spinner:#33CCCC,prompt:#14E21A,gutter:-1,label:#14E21A,bg:-1,preview-bg:-1,preview-border:#00422C,input-border:#00422C,list-border:#00422C}"
 
@@ -48,6 +55,13 @@ icon_for() {
     case "$n" in
         claude*)              echo "C" ;;
         codex*)               echo "X" ;;
+        pi*)                  echo "P" ;;
+        opencode*)            echo "O" ;;
+        gemini*)              echo "m" ;;
+        aider*)               echo "A" ;;
+        grok*)                echo "k" ;;
+        qwen*)                echo "Q" ;;
+        continue*)            echo "c" ;;
         nvim|vim|vi)          echo "V" ;;
         lazygit|lg|git)       echo "G" ;;
         lazydocker|ld|docker) echo "D" ;;
@@ -56,6 +70,15 @@ icon_for() {
         ssh*)                 echo "S" ;;
         zsh|bash|fish|shell*) echo "$" ;;
         *)                    echo "" ;;
+    esac
+}
+
+light_color() {
+    case "$1" in
+        ◐) printf '%s' "$C_YELLOW$1$C_RESET" ;;
+        ●) printf '%s' "$C_GREEN$1$C_RESET" ;;
+        ○) printf '%s' "$C_GREY$1$C_RESET" ;;
+        *) printf '%s' "$1" ;;
     esac
 }
 
@@ -125,11 +148,56 @@ session_div() {
     printf "${C_DIM}   %s${C_RESET}${SEP}sep:\n" "$body"
 }
 
+# Load live agent state into globals: pane_agent, sess_agents, agent_rows.
+load_agents() {
+    local name sess widx wname paneid pid light
+    if [[ ! -x "$AGENTS_DIR/agents_state.sh" ]]; then
+        return 0
+    fi
+    while IFS='|' read -r name sess widx wname paneid pid light; do
+        [[ -n "$name" ]] || continue
+        pane_agent["$paneid"]="$name|$light"
+        agent_rows+=("$name|$light|$sess|$widx|$wname")
+        if [[ -z "${sess_agents[$sess]:-}" ]]; then
+            sess_agents["$sess"]="$name"
+        elif [[ " ${sess_agents[$sess]} " != *" $name "* ]]; then
+            sess_agents["$sess"]="${sess_agents[$sess]} $name"
+        fi
+    done < <(bash "$AGENTS_DIR/agents_state.sh" 2>/dev/null)
+}
+
+# herdr-style "jump to an agent" section. Each row is a selectable window target.
+emit_agents_section() {
+    local row name light sess widx wname ico acol
+    if (( ${#agent_rows[@]} == 0 )); then
+        return 0
+    fi
+    printf "${C_GREEN}>${C_RESET} ${C_WHITE}Agents${C_RESET}${SEP}sep:agents\n"
+    for row in "${agent_rows[@]}"; do
+        IFS='|' read -r name light sess widx wname <<< "$row"
+        ico="$(icon_for "$name")"
+        ico="${ico:- }"
+        acol="$(light_color "$light")"
+        printf "  ${C_BLUE}%s${C_RESET} ${C_WHITE}%s${C_RESET} ${acol}  ${C_GREY}%s:%s${C_RESET}  ${C_DIM}%s${C_RESET}${SEP}window:%s:%s\n" \
+            "$ico" "$name" "$sess" "$widx" "$wname" "$sess" "$widx"
+    done
+}
+
 build_sessions() {
     local first=1 any=0
 
+    load_agents
+
+    # herdr-style jump section, always shown first
+    emit_agents_section
+
+    # Agent-only view (ctrl-g): the jump section is all we show.
+    if [[ "${AGENTS_ONLY:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    local sname wins attached activity icon wlabel attached_mark age_str sessag
     while IFS='|' read -r sname wins attached activity; do
-        local icon wlabel attached_mark age_str
         any=1
         [[ "$first" == "1" ]] && first=0 || session_div
 
@@ -138,21 +206,31 @@ build_sessions() {
         attached_mark=$([[ "$attached" == "1" ]] && echo " ${C_GREEN}*${C_RESET}" || echo "")
         age_str=""
         [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity") idle${C_RESET}"
+        sessag=""
+        if [[ -n "${sess_agents[$sname]:-}" ]]; then
+            sessag=" ${C_DIM}·${C_RESET} ${C_BLUE}${sess_agents[$sname]// /,}${C_RESET}"
+        fi
 
-        printf "${C_BRIGHT}%s%s${C_RESET}  ${C_BLUE}%s${C_RESET}%b%b${SEP}session:%s\n" \
-            "${icon:+$icon }" "$sname" "$wlabel" "$attached_mark" "$age_str" "$sname"
+        printf "${C_BRIGHT}%s%s${C_RESET}  ${C_BLUE}%s${C_RESET}%s%b%b${SEP}session:%s\n" \
+            "${icon:+$icon }" "$sname" "$wlabel" "$sessag" "$attached_mark" "$age_str" "$sname"
 
-        while IFS='|' read -r widx wname wcmd wactive wpath panes; do
-            local wicon pshort active_mark pane_mark
+        local widx wname wcmd wactive wpath panes wpaneid wicon pshort active_mark pane_mark wagent an al
+        while IFS='|' read -r widx wname wcmd wactive wpath panes wpaneid; do
             wicon=$(icon_for "$wcmd")
             [[ -z "$wicon" ]] && wicon=$(icon_for "$wname")
             pshort=$(display_path "$wpath")
             active_mark=$([[ "$wactive" == "1" ]] && echo " ${C_GREEN}+${C_RESET}" || echo "")
             pane_mark=$([[ "$panes" == "1" ]] && echo "" || echo " ${C_YELLOW}${panes}p${C_RESET}")
-            printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
-                "${wicon:+$wicon }" "$wname" "$sname" "$widx" "$wcmd" "$pshort" "$pane_mark" "$active_mark" "$sname" "$widx"
+            wagent=""
+            if [[ -n "${pane_agent[$wpaneid]:-}" ]]; then
+                an="${pane_agent[$wpaneid]%%|*}"
+                al="$(light_color "${pane_agent[$wpaneid]##*|}")"
+                wagent=" ${C_BLUE}| ${an}${C_RESET} ${al}"
+            fi
+            printf "  ${C_DIM}|-${C_RESET} ${C_WHITE}%s%s${C_RESET}%s  ${C_GREY}%s:%s  %s  %s${C_RESET}%b%b${SEP}window:%s:%s\n" \
+                "${wicon:+$wicon }" "$wname" "$wagent" "$sname" "$widx" "$wcmd" "$pshort" "$pane_mark" "$active_mark" "$sname" "$widx"
         done < <(tmux list-windows -t "$sname" \
-            -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}" 2>/dev/null)
+            -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}|#{pane_id}" 2>/dev/null)
     done < <(tmux list-sessions \
         -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}" 2>/dev/null \
         | sort -t'|' -k3,3r -k1,1)
@@ -163,6 +241,11 @@ build_sessions() {
 }
 
 list_all() {
+    build_sessions
+}
+
+list_agents() {
+    AGENTS_ONLY=1
     build_sessions
 }
 
@@ -231,6 +314,7 @@ drill_panes() {
 
 case "${1:-}" in
     --list)              list_all; exit 0 ;;
+    --list-agents)       list_agents; exit 0 ;;
     --new-session)       new_session "${2:-}"; exit 0 ;;
     --kill-target)        kill_target "${2:-}"; exit 0 ;;
     --rename)            rename_target "${2:-}"; exit 0 ;;
@@ -258,6 +342,7 @@ gray="$(ansi_fg "${TS_MUTED:-#666666}")"
 white="$(ansi_fg "${TS_FG:-#EDF1F3}")"
 reset=$'\033[0m'
 empty="${gray}(no pane output)${reset}"
+AGENTS="@AGENTS_DIR@/agents_state.sh"
 
 short_path() {
     case "$1" in
@@ -283,6 +368,27 @@ display_path() {
     esac
 }
 
+light_color() {
+    case "$1" in
+        ◐) printf '%s' "$yellow$1$reset" ;;
+        ●) printf '%s' "$green$1$reset" ;;
+        ○) printf '%s' "$gray$1$reset" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# show_agents <session> [window-index]
+show_agents() {
+    local sess="$1" w="${2:-}" n s widx wn l lc
+    [ -x "$AGENTS" ] || return 0
+    bash "$AGENTS" 2>/dev/null | while IFS='|' read -r n s widx wn p pid l; do
+        [ "$s" = "$sess" ] || continue
+        [ -n "$w" ] && [ "$widx" != "$w" ] && continue
+        lc="$(light_color "$l")"
+        printf "  %s%s%s %s  %s:%s  %s\n" "$green" "$n" "$reset" "$lc" "$s" "$widx" "$wn"
+    done
+}
+
 preview_session() {
     local sess="$1" attached created windows active_window active_cmd active_path
     attached=$(tmux display-message -p -t "$sess" "#{?session_attached,attached,detached}" 2>/dev/null)
@@ -297,6 +403,8 @@ preview_session() {
     [[ -n "$created" ]] && printf "%sCreated%s %s\n" "$gray" "$reset" "$created"
     printf "%sActive%s  %s%s%s  %s%s%s\n" "$gray" "$reset" "$white" "${active_window:-unknown}" "$reset" "$gray" "${active_cmd:-unknown}" "$reset"
     [[ -n "$active_path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(display_path "$active_path")"
+    printf "%s\nAgents%s\n" "$green" "$reset"
+    show_agents "$sess"
     printf "%s\nWindows%s\n" "$green" "$reset"
     tmux list-windows -t "$sess" \
         -F "  #{?window_active,+, } #{window_index}:#{window_name}  #{window_panes}p  #{pane_current_command}  #{pane_current_path}" 2>/dev/null |
@@ -323,6 +431,8 @@ preview_window() {
     printf "%sPanes%s   %s%s%s\n" "$gray" "$reset" "$yellow" "${panes:-0}" "$reset"
     printf "%sActive%s  %s%s%s\n" "$gray" "$reset" "$white" "${cmd:-unknown}" "$reset"
     [[ -n "$path" ]] && printf "%sPath%s    %s\n" "$gray" "$reset" "$(display_path "$path")"
+    printf "%s\nAgents%s\n" "$green" "$reset"
+    show_agents "$sess" "$widx"
     printf "%s\nPane output%s\n" "$green" "$reset"
     output=$(tmux capture-pane -p -t "${sess}:${widx}" -S -35 2>/dev/null | /usr/bin/sed '/^[[:space:]]*$/d' | /usr/bin/tail -35)
     [ -n "$output" ] && printf "%s\n" "$output" || printf "%s\n" "$empty"
@@ -338,6 +448,8 @@ else
     printf "%sNo tmux target selected%s\n" "$gray" "$reset"
 fi
 PREVIEW
+# Inject the resolved agents dir (the heredoc is intentionally single-quoted).
+PREVIEW_CMD="${PREVIEW_CMD//@AGENTS_DIR@/$AGENTS_DIR}"
 
 selected=$(printf '' | fzf \
     --height '~100%' \
@@ -364,9 +476,11 @@ selected=$(printf '' | fzf \
     --preview-label-pos=2 \
     --padding=0,1 \
     --info=inline-right \
-    --header $'  Enter attach  ^N new  ^R rename  ^D kill  ^/ preview' \
+    --header $'  Enter attach  ^N new  ^R rename  ^D kill  ^/ preview  ^G agents-only  ^T all' \
     --bind "start:reload-sync(bash '$SELF' --list)" \
     --bind 'ctrl-/:toggle-preview' \
+    --bind 'ctrl-g:reload-sync(bash '$SELF' --list-agents)' \
+    --bind 'ctrl-t:reload-sync(bash '$SELF' --list)' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
     --bind "enter:transform:[[ {-1} == sep:* ]] && echo ignore || echo accept" \
