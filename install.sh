@@ -6,6 +6,15 @@ DEST="${1:-$HOME/.config/tmux}"
 SRC="da-vinci-console.sh"
 INSTALLED="sesh_picker.sh"
 
+# Hard dependency check: the whole thing is useless without these.
+for cmd in tmux fzf; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "Error: required command '$cmd' not found in PATH." >&2
+        echo "Install it first, then re-run ./install.sh" >&2
+        exit 1
+    fi
+done
+
 if [[ ! -f "$SRC" ]]; then
     echo "Error: run this from the repo root (da-vinci-console.sh not found)" >&2
     exit 1
