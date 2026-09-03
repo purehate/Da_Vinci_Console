@@ -5,6 +5,7 @@ set -euo pipefail
 DEST="${1:-$HOME/.config/tmux}"
 SRC="da-vinci-console.sh"
 INSTALLED="sesh_picker.sh"
+WRAPPER="picker_popup.sh"
 
 # Hard dependency check: the whole thing is useless without these.
 for cmd in tmux fzf; do
@@ -24,6 +25,11 @@ mkdir -p "$DEST"
 cp "$SRC" "$DEST/$INSTALLED"
 chmod +x "$DEST/$INSTALLED"
 echo "✓ Installed: $DEST/$INSTALLED"
+
+# Dynamic-size popup wrapper (sizes display-popup to fit the list)
+cp "$WRAPPER" "$DEST/$WRAPPER"
+chmod +x "$DEST/$WRAPPER"
+echo "✓ Installed: $DEST/$WRAPPER"
 
 # ── Agents module (herdr-style detection) ──────────────────────────────────
 # window_agent.sh  -> annotates each window pill in the status line
@@ -47,7 +53,9 @@ echo "  cp extras/tmux.conf $DEST/tmux.conf   # then <prefix>+r to reload"
 echo ""
 echo "Or just add the picker binding to your existing tmux.conf:"
 echo ""
-echo "  bind-key s display-popup -B -x C -y C -w 72% -h 72% -s \"bg=default\" -E \"$DEST/$INSTALLED\""
+echo "  bind-key s run-shell \"$DEST/$WRAPPER\""
+echo ""
+echo "The wrapper sizes the popup to fit the list (dynamic height+width)."
 echo ""
 
 # ── Dependency check ────────────────────────────────────────────────────────

@@ -79,8 +79,12 @@ tmux source-file ~/.config/tmux/tmux.conf       # or <prefix>+r
 Or just add the picker binding to your existing config:
 
 ```tmux
-bind-key s display-popup -B -x C -y C -w 72% -h 72% -s "bg=default" -E "~/.config/tmux/sesh_picker.sh"
+bind-key s run-shell "~/.config/tmux/picker_popup.sh"
 ```
+
+The `picker_popup.sh` wrapper sizes the popup to fit the list (dynamic height
++ width) with an opaque background, so it hugs the content and reads cleanly
+regardless of terminal transparency.
 
 ## Keybindings
 
