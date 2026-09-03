@@ -431,7 +431,7 @@ PREVIEW
 PREVIEW_CMD="${PREVIEW_CMD//@AGENTS_DIR@/$AGENTS_DIR}"
 
 selected=$(printf '' | fzf \
-    --height '~100%' \
+    --height 100% \
     --ansi \
     --layout=reverse \
     --no-sort \
