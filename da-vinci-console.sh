@@ -195,8 +195,18 @@ build_sessions() {
 
     load_agents
 
-    local sname wins attached activity icon wlabel attached_mark age_str sessag
-    while IFS='|' read -r sname wins attached activity; do
+    # zoxide path->score (frecency). Missing/unknown paths score 0, so sessions
+    # whose folder zoxide doesn't track sink below the ones you visit most.
+    local -A zscore
+    local zsc zpath
+    if command -v zoxide >/dev/null 2>&1; then
+        while read -r zsc zpath; do
+            [[ "$zpath" == /* ]] && zscore["$zpath"]="${zsc:-0}"
+        done < <(zoxide query --list --score 2>/dev/null)
+    fi
+
+    local sname wins attached activity icon wlabel attached_mark age_str sessag path
+    while IFS='|' read -r score attached sname wins activity path; do
         # In agent-only view (ctrl-g), skip sessions with no agents.
         if [[ "${AGENTS_ONLY:-0}" == "1" && -z "${sess_agents[$sname]:-}" ]]; then
             continue
@@ -236,9 +246,16 @@ build_sessions() {
             fi
         done < <(tmux list-windows -t "$sname" \
             -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}|#{pane_id}" 2>/dev/null)
-    done < <(tmux list-sessions \
-        -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}" 2>/dev/null \
-        | sort -t'|' -k3,3r -k1,1)
+    done < <(
+        # One row per session with a zoxide sort key: attached first, then by
+        # zoxide frecency (score desc), then name.
+        while IFS='|' read -r sname wins attached activity path; do
+            sc="${zscore[$path]:-0}"
+            printf '%s|%s|%s|%s|%s|%s\n' "$sc" "$attached" "$sname" "$wins" "$activity" "$path"
+        done < <(tmux list-sessions \
+            -F "#{session_name}|#{session_windows}|#{?session_attached,1,0}|#{session_activity}|#{pane_current_path}" 2>/dev/null) \
+        | sort -t'|' -k2,2r -k1,1nr -k3,3
+    )
 
     if [[ "$any" == "0" ]]; then
         printf "${C_DIM}No tmux sessions found. Press Ctrl-N to create one.${C_RESET}${SEP}sep:empty\n"
