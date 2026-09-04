@@ -55,8 +55,9 @@ cd Da_Vinci_Console
 ./install.sh
 ```
 
-The installer copies the picker to `~/.config/tmux/sesh_picker.sh` and the
-agent module to `~/.config/tmux/agents/`.
+The installer copies the picker to `~/.config/tmux/sesh_picker.sh`, the
+dynamic-size popup wrapper to `~/.config/tmux/picker_popup.sh`, and the agent
+module to `~/.config/tmux/agents/`.
 
 ## Tmux status line (agents in the window pills)
 
@@ -70,6 +71,10 @@ agent dashboard:
 
 Each window pill shows `| agent ⦁`; click a pill to jump to that window. No
 agent → the pill looks normal.
+
+The same `extras/tmux.conf` also draws a live pane border with the current
+path, the running agent's light, and the git branch — so the agent follows you
+around the window, not just in the status line or picker.
 
 ```bash
 cp extras/tmux.conf ~/.config/tmux/tmux.conf   # back up yours first!
