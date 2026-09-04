@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# window_agent.sh <pane_id> - annotate a window pill with its running agent
-# and a status light:
+# window_agent.sh <pane_id> - render a window pill: icon + window name, plus
+# the running agent and its status light when one is present:
 #
-#   " | pi ●"   working  (CPU time grew since last refresh)
-#   " | pi ○"   idle     (running but no recent CPU)
-#   " | pi ◐"   focused  (this is the pane you're viewing)
+#   " node dotfiles "              no agent
+#   "  dotfiles  pi ◐"             agent running (rocket icon, focused)
 #
 # Used from window-status-format / window-status-current-format via:
 #   #(bash .../window_agent.sh #{pane_id})
-# Emits nothing when no agent runs in the pane, so the pill renders unchanged.
+# Always emits an icon + name so the pill reads cleanly even without an agent.
 #
-# The symbol inherits the pill's colour so it stays visible on both the normal
+# The output inherits the pill's colour so it stays visible on both the normal
 # and current-window pill backgrounds.
 
 set -u
@@ -39,6 +38,8 @@ utime_to_sec() {
 root="$(tmux display-message -p -t "$pane_id" '#{pane_pid}' 2>/dev/null)"
 [[ -n "$root" && "$root" != "0" ]] || exit 0
 current="$(tmux display-message -p '#{pane_id}' 2>/dev/null)"
+cmd="$(tmux display-message -p -t "$pane_id" '#{pane_current_command}' 2>/dev/null)"
+wname="$(tmux display-message -p -t "$pane_id" '#{window_name}' 2>/dev/null)"
 
 # One ps pass: parent -> children and pid -> command name.
 declare -A child comm
@@ -74,6 +75,13 @@ while (( ${#queue[@]} > 0 )); do
   queue+=(${child[$cur]:-})
 done
 
+# Nerd Font icon for the window's running command (falls back to a generic
+# shell/file icon so every pill has a glyph). Shared with the picker.
+icon="$(app_icon "${agent:-$cmd}")"
+
+# Emit icon + window name first, then agent + light if one is present.
+printf ' %s %s' "${icon:+$icon }" "${wname:-}"
+
 [[ -n "$agent" ]] || exit 0
 
 # Status light: focused > working > idle.
@@ -99,9 +107,5 @@ else
   mv "$CACHE.tmp" "$CACHE"
 fi
 
-# Nerd Font icon for the window's agent, so the pill gets a glyph (not just
-# the agent + light). Uses the same app_icon() as the picker.
-icon="$(app_icon "$agent")"
-
-printf ' %s %s %s' "${icon:+$icon }" "$agent" "$light"
+printf ' | %s %s' "$agent" "$light"
 exit 0

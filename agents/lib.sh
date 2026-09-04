@@ -32,7 +32,8 @@ app_icon() {
         codex*|cursor*)                  printf '\uf120' ;; #  nf-fa-terminal
         pi*)                             printf '\uf135' ;; #  nf-fa-rocket
         opencode*|gemini*|aider*|grok*|qwen*|continue*) printf '\uea6a' ;; #  nf-fa-robot
-        *)                               printf '' ;;
+        zsh|bash|fish|sh|shell*|topgrade) printf '\uf489' ;; #  nf-fa-terminal (generic shell)
+        *)                               printf '\uf016' ;; #  nf-fa-file-o (fallback)
     esac
 }
 
