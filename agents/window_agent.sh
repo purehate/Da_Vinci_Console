@@ -99,5 +99,9 @@ else
   mv "$CACHE.tmp" "$CACHE"
 fi
 
-printf ' | %s %s' "$agent" "$light"
+# Nerd Font icon for the window's agent, so the pill gets a glyph (not just
+# the agent + light). Uses the same app_icon() as the picker.
+icon="$(app_icon "$agent")"
+
+printf ' %s %s %s' "${icon:+$icon }" "$agent" "$light"
 exit 0

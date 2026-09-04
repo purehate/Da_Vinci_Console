@@ -46,6 +46,7 @@ agents/
 | --- | --- |
 | [tmux](https://github.com/tmux/tmux) | Required |
 | [fzf](https://github.com/junegunn/fzf) | Required |
+| Nerd Font (e.g. JetBrainsMono Nerd Font) | Recommended — for the icons |
 
 ## Install
 
@@ -124,6 +125,8 @@ pill's own colour.)
 
 ## Icons
 
-Icons are intentionally simple ASCII markers so the picker works cleanly
-without a Nerd Font. Agent windows map to a letter (`pi`→P, `claude`→C,
-`codex`→X, ...). Edit `icon_for()` in `da-vinci-console.sh` to customise.
+Icons are **Nerd Font glyphs**, shared by the picker rows and the tmux
+status-line window pills via `app_icon()` in `agents/lib.sh` / `icon_for()` in
+`da-vinci-console.sh`. A Nerd Font is required in your terminal to see them
+(e.g. `brew install --cask font-jetbrains-mono-nerd-font`) — without one the
+icon space collapses to blank. Edit those functions to customise.

@@ -52,23 +52,23 @@ icon_for() {
     local n="${1,,}"
     n="${n##*/}"
     case "$n" in
-        claude*)              echo "C" ;;
-        codex*)               echo "X" ;;
-        pi*)                  echo "P" ;;
-        opencode*)            echo "O" ;;
-        gemini*)              echo "m" ;;
-        aider*)               echo "A" ;;
-        grok*)                echo "k" ;;
-        qwen*)                echo "Q" ;;
-        continue*)            echo "c" ;;
-        nvim|vim|vi)          echo "V" ;;
-        lazygit|lg|git)       echo "G" ;;
-        lazydocker|ld|docker) echo "D" ;;
-        yazi)                 echo "Y" ;;
-        btop|htop|top)        echo "T" ;;
-        ssh*)                 echo "S" ;;
-        zsh|bash|fish|shell*) echo "$" ;;
-        *)                    echo "" ;;
+        claude*)              printf '\ue815' ;; # nf-fa-clone
+        codex*|cursor*)       printf '\uf120' ;; # nf-fa-terminal
+        pi*)                  printf '\uf135' ;; # nf-fa-rocket
+        opencode*)            printf '\uea6a' ;; # nf-fa-robot
+        gemini*)              printf '\uf0c2' ;; # nf-fa-cloud
+        aider*)               printf '\uf108' ;; # nf-fa-desktop
+        grok*)                printf '\uf0e7' ;; # nf-fa-bolt
+        qwen*)                printf '\uf1c0' ;; # nf-fa-database
+        continue*)            printf '\uf04b' ;; # nf-fa-play
+        nvim|vim|vi)          printf '\ue795' ;; # nf-custom-vim
+        lazygit|lg|git)       printf '\uf1d3' ;; # nf-fa-git
+        lazydocker|ld|docker) printf '\uf308' ;; # nf-linux-docker
+        yazi)                 printf '\uf07b' ;; # nf-fa-folder
+        btop|htop|top)        printf '\uf489' ;; # nf-fa-terminal
+        ssh*)                 printf '\uf817' ;; # nf-fa-linux (remote)
+        zsh|bash|fish|shell*) printf '\uf489' ;; # nf-fa-terminal
+        *)                    printf '' ;;
     esac
 }
 

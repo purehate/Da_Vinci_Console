@@ -12,6 +12,30 @@
 # Space-separated list of agent command names to watch. Override with $TMUX_AGENTS.
 AGENT_LABELS="${TMUX_AGENTS:-pi claude codex opencode gemini aider cursor-agent grok continue qwen-code}"
 
+# app_icon <name> - Nerd Font glyph for a window's main command/session.
+# Shared by the picker rows and the tmux status-line window pills.
+app_icon() {
+    local n="${1,,}"
+    n="${n##*/}"
+    case "$n" in
+        nvim|vim|vi)                     printf '\ue795' ;; #  nf-custom-vim
+        lazygit|gitui|git)               printf '\uf1d3' ;; #  nf-fa-git
+        docker|docker-compose)           printf '\uf308' ;; #  nf-linux-docker
+        mysql|psql|sqlite|redis-cli)     printf '\uf1c0' ;; #  nf-fa-database
+        ssh|sshpass|mosh)                printf '\uf817' ;; #  nf-fa-linux (remote)
+        htop|btop|top|bottom|glances)    printf '\uf489' ;; #  nf-fa-terminal
+        yazi|ranger|lf|nnn)              printf '\uf07b' ;; #  nf-fa-folder
+        python|python3|ipython|uv|poetry) printf '\uf81f' ;; #  nf-fa-python
+        node|nodejs|npm|yarn|pnpm|npx)   printf '\ue718' ;; #  nf-dev-nodejs
+        go|golang)                       printf '\ue626' ;; #  nf-dev-go
+        claude*)                         printf '\ue815' ;; #  nf-fa-clone (orange-ish)
+        codex*|cursor*)                  printf '\uf120' ;; #  nf-fa-terminal
+        pi*)                             printf '\uf135' ;; #  nf-fa-rocket
+        opencode*|gemini*|aider*|grok*|qwen*|continue*) printf '\uea6a' ;; #  nf-fa-robot
+        *)                               printf '' ;;
+    esac
+}
+
 _is_agent() {
   local c="$1" a
   c="${c##*/}"   # ps comm may be a full path (e.g. .../bin/codex)
