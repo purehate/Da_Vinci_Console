@@ -76,6 +76,9 @@ The same `extras/tmux.conf` also draws a live pane border with the current
 path, the running agent's light, and the git branch — so the agent follows you
 around the window, not just in the status line or picker.
 
+Its status-right is a full powerline dashboard: git branch, pane count, a live
+agent count, CPU, memory, and the date — all in the same block style.
+
 ```bash
 cp extras/tmux.conf ~/.config/tmux/tmux.conf   # back up yours first!
 tmux source-file ~/.config/tmux/tmux.conf       # or <prefix>+r
@@ -108,8 +111,13 @@ regardless of terminal transparency.
 ## Agent status lights
 
 - **◐** — focused (the window/pane you're viewing)
-- **●** — working (CPU time grew since last refresh)
+- **◓ ◑ ◒ ◔** — working (CPU time grew since last refresh; the light spins)
 - **○** — idle
+
+Each agent also gets its own **brand colour** (pi=green, claude=orange,
+codex=red, gemini=blue, aider=pink, opencode=teal, …) so you can scan who's
+running where at a glance — in the picker, the preview, and the session
+summaries.
 
 ## Icons
 

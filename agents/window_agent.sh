@@ -90,7 +90,7 @@ else
   fi
   prev="${prev//[^0-9]/}"
   if [[ -n "$prev" && "$us" -gt "${prev:-0}" ]]; then
-    light="●"
+    light="$(working_light)"
   fi
   # Persist this agent's CPU baseline.
   : > "$CACHE.tmp"

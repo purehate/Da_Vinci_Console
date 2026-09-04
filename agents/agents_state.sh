@@ -43,7 +43,7 @@ while IFS='|' read -r name sess widx wname paneid pid; do
     us="$(utime_to_sec "$(ps -o utime= -p "$pid" 2>/dev/null)")"
     prev="${cached[$pid]:-}"
     if [[ -n "$prev" && -n "$us" && "$us" -gt "$prev" ]]; then
-      light="●"
+      light="$(working_light)"
     fi
     cur_secs["$pid"]="$us"
   fi

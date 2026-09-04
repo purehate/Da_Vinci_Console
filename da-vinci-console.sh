@@ -75,10 +75,36 @@ icon_for() {
 light_color() {
     case "$1" in
         ◐) printf '%s' "$C_YELLOW$1$C_RESET" ;;
-        ●) printf '%s' "$C_GREEN$1$C_RESET" ;;
+        ●|◓|◑|◒|◔) printf '%s' "$C_GREEN$1$C_RESET" ;;
         ○) printf '%s' "$C_GREY$1$C_RESET" ;;
         *) printf '%s' "$1" ;;
     esac
+}
+
+# brand colour for an agent name (raw ANSI fg)
+agent_color() {
+    case "${1,,}" in
+        pi*|cursor*)        printf '\033[38;2;20;226;26m' ;;
+        claude*)            printf '\033[38;2;232;158;66m' ;;
+        codex*)             printf '\033[38;2;255;123;114m' ;;
+        gemini*)            printf '\033[38;2;88;166;255m' ;;
+        aider*)             printf '\033[38;2;247;118;186m' ;;
+        opencode*)          printf '\033[38;2;51;204;204m' ;;
+        grok*)              printf '\033[38;2;188;140;255m' ;;
+        qwen*)              printf '\033[38;2;51;204;255m' ;;
+        continue*)          printf '\033[38;2;139;148;158m' ;;
+        *)                  printf '' ;;
+    esac
+}
+
+# colorize_agents <space-separated-names> -> comma list, each name brand-coloured
+colorize_agents() {
+    local list="$1" out="" n first=1
+    for n in $list; do
+        if [[ "$first" == "1" ]]; then first=0; else out+="${C_DIM},${C_RESET}"; fi
+        out+="$(agent_color "$n")$n${C_RESET}"
+    done
+    printf '%s' "$out"
 }
 
 short_path() {
@@ -185,7 +211,7 @@ build_sessions() {
         [[ -n "$activity" && "$activity" != "0" ]] && age_str="  ${C_DIM}$(relative_time "$activity") idle${C_RESET}"
         sessag=""
         if [[ -n "${sess_agents[$sname]:-}" ]]; then
-            sessag=" ${C_DIM}·${C_RESET} ${C_BLUE}${sess_agents[$sname]// /,}${C_RESET}"
+            sessag=" ${C_DIM}·${C_RESET} $(colorize_agents "${sess_agents[$sname]}")"
         fi
 
         printf "${C_BRIGHT}%s%s${C_RESET}  ${C_BLUE}%s${C_RESET}%s%b%b${SEP}session:%s\n" \
@@ -206,7 +232,7 @@ build_sessions() {
             if [[ -n "${pane_agent[$wpaneid]:-}" ]]; then
                 an="${pane_agent[$wpaneid]%%|*}"
                 al="$(light_color "${pane_agent[$wpaneid]##*|}")"
-                printf "     ${C_DIM}└${C_RESET} ${C_BLUE}%s${C_RESET} ${al}${SEP}window:%s:%s\n" "$an" "$sname" "$widx"
+                printf "     ${C_DIM}└${C_RESET} %s%s${C_RESET} ${al}${SEP}window:%s:%s\n" "$(agent_color "$an")" "$an" "$sname" "$widx"
             fi
         done < <(tmux list-windows -t "$sname" \
             -F "#{window_index}|#{window_name}|#{pane_current_command}|#{window_active}|#{pane_current_path}|#{window_panes}|#{pane_id}" 2>/dev/null)
@@ -350,9 +376,24 @@ display_path() {
 light_color() {
     case "$1" in
         ◐) printf '%s' "$yellow$1$reset" ;;
-        ●) printf '%s' "$green$1$reset" ;;
+        ●|◓|◑|◒|◔) printf '%s' "$green$1$reset" ;;
         ○) printf '%s' "$gray$1$reset" ;;
         *) printf '%s' "$1" ;;
+    esac
+}
+
+agent_color() {
+    case "${1,,}" in
+        pi*|cursor*)        printf '\033[38;2;20;226;26m' ;;
+        claude*)            printf '\033[38;2;232;158;66m' ;;
+        codex*)             printf '\033[38;2;255;123;114m' ;;
+        gemini*)            printf '\033[38;2;88;166;255m' ;;
+        aider*)             printf '\033[38;2;247;118;186m' ;;
+        opencode*)          printf '\033[38;2;51;204;204m' ;;
+        grok*)              printf '\033[38;2;188;140;255m' ;;
+        qwen*)              printf '\033[38;2;51;204;255m' ;;
+        continue*)          printf '\033[38;2;139;148;158m' ;;
+        *)                  printf '' ;;
     esac
 }
 
@@ -364,7 +405,7 @@ show_agents() {
         [ "$s" = "$sess" ] || continue
         [ -n "$w" ] && [ "$widx" != "$w" ] && continue
         lc="$(light_color "$l")"
-        printf "  %s%s%s %s  %s:%s  %s\n" "$green" "$n" "$reset" "$lc" "$s" "$widx" "$wn"
+        printf "  %s%s%s %s  %s:%s  %s\n" "$(agent_color "$n")" "$n" "$reset" "$lc" "$s" "$widx" "$wn"
     done
 }
 

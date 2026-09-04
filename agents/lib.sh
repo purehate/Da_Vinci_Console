@@ -70,3 +70,30 @@ agent_records() {
     fi
   done
 }
+
+# working_light - animated "working" indicator (quarter-spinner).
+# Phase rotates with the wall-clock so any refresh shows the next step.
+# Uses ◓◑◒◔ so ◐ stays reserved for the focused state.
+working_light() {
+    local s=$(( $(date +%s) / 2 % 4 ))
+    case "$s" in
+        0) printf '◓' ;; 1) printf '◑' ;; 2) printf '◒' ;; 3) printf '◔' ;;
+    esac
+}
+
+# agent_color <name> - brand colour for an agent (raw ANSI fg, or empty).
+# Lets the picker/preview tint each agent's name its own brand colour.
+agent_color() {
+    case "${1,,}" in
+        pi*|cursor*)         printf '\033[38;2;20;226;26m'  ;; # green
+        claude*)             printf '\033[38;2;232;158;66m'  ;; # orange
+        codex*)              printf '\033[38;2;255;123;114m' ;; # red
+        gemini*)             printf '\033[38;2;88;166;255m'  ;; # blue
+        aider*)              printf '\033[38;2;247;118;186m' ;; # pink
+        opencode*)           printf '\033[38;2;51;204;204m'  ;; # teal
+        grok*)               printf '\033[38;2;188;140;255m' ;; # purple
+        qwen*)               printf '\033[38;2;51;204;255m'  ;; # cyan
+        continue*)           printf '\033[38;2;139;148;158m' ;; # gray
+        *)                   printf '' ;;
+    esac
+}
