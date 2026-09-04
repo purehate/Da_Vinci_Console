@@ -31,11 +31,6 @@ cp "$WRAPPER" "$DEST/$WRAPPER"
 chmod +x "$DEST/$WRAPPER"
 echo "✓ Installed: $DEST/$WRAPPER"
 
-# Status-left renderer (prefix-aware session + hostname blocks)
-cp "status_left.sh" "$DEST/status_left.sh"
-chmod +x "$DEST/status_left.sh"
-echo "✓ Installed: $DEST/status_left.sh"
-
 # ── Agents module (herdr-style detection) ──────────────────────────────────
 # window_agent.sh  -> annotates each window pill in the status line
 # agents_state.sh  -> feeds the picker's agents header + window tags

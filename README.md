@@ -56,8 +56,7 @@ cd Da_Vinci_Console
 ```
 
 The installer copies the picker to `~/.config/tmux/sesh_picker.sh`, the
-dynamic-size popup wrapper to `~/.config/tmux/picker_popup.sh`, the
-prefix-aware status-left renderer to `~/.config/tmux/status_left.sh`, and the
+dynamic-size popup wrapper to `~/.config/tmux/picker_popup.sh`, and the
 agent module to `~/.config/tmux/agents/`.
 
 ## Tmux status line (agents in the window pills)
@@ -77,10 +76,10 @@ The same `extras/tmux.conf` also draws a live pane border with the current
 path, the running agent's light, and the git branch — so the agent follows you
 around the window, not just in the status line or picker.
 
-Its status-right is a full powerline dashboard: git branch, pane count, a live
-agent count, CPU, memory, load, and the date. The status-left is prefix-aware
-— the session block flips to blue with a keyboard glyph while you're holding
-`<prefix>` — and shows the hostname. Window pills are centered.
+Its status-right is a compact powerline block: git branch, pane count, and
+the date/time. The status-left shows just the session name. Window pills sit
+left-justified. The `status-interval` of 2s lets the "working" light spin
+while an agent is burning CPU.
 
 ```bash
 cp extras/tmux.conf ~/.config/tmux/tmux.conf   # back up yours first!
@@ -120,7 +119,8 @@ regardless of terminal transparency.
 Each agent also gets its own **brand colour** (pi=green, claude=orange,
 codex=red, gemini=blue, aider=pink, opencode=teal, …) so you can scan who's
 running where at a glance — in the picker, the preview, and the session
-summaries.
+summaries. (Colours show in the picker; the status-line pills inherit the
+pill's own colour.)
 
 ## Icons
 
