@@ -56,8 +56,9 @@ cd Da_Vinci_Console
 ```
 
 The installer copies the picker to `~/.config/tmux/sesh_picker.sh`, the
-dynamic-size popup wrapper to `~/.config/tmux/picker_popup.sh`, and the agent
-module to `~/.config/tmux/agents/`.
+dynamic-size popup wrapper to `~/.config/tmux/picker_popup.sh`, the
+prefix-aware status-left renderer to `~/.config/tmux/status_left.sh`, and the
+agent module to `~/.config/tmux/agents/`.
 
 ## Tmux status line (agents in the window pills)
 
@@ -77,7 +78,9 @@ path, the running agent's light, and the git branch — so the agent follows you
 around the window, not just in the status line or picker.
 
 Its status-right is a full powerline dashboard: git branch, pane count, a live
-agent count, CPU, memory, and the date — all in the same block style.
+agent count, CPU, memory, load, and the date. The status-left is prefix-aware
+— the session block flips to blue with a keyboard glyph while you're holding
+`<prefix>` — and shows the hostname. Window pills are centered.
 
 ```bash
 cp extras/tmux.conf ~/.config/tmux/tmux.conf   # back up yours first!
