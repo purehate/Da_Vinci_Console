@@ -18,6 +18,8 @@ live preview.
 - Live preview of the selected session or window
 - Pane drill-down when a window has multiple panes
 - Create, rename, and kill directly from the picker
+- **Broadcast**: select multiple panes and send one command to all of them
+  (great for parallel tool runs across an engagement)
 - A shareable `extras/tmux.conf` that puts the same agent status lights in your
   tmux status-line window pills — so agents are visible *everywhere*, not just
   in the picker
@@ -39,6 +41,14 @@ agents/
 ├── window_agent.sh   # " | pi ●" for one window (feeds the status line)
 └── jump.sh           # <prefix>+a fzf picker across all agents
 ```
+
+## Broadcast
+
+`<prefix>+B` opens a floating picker of **every pane** across all sessions.
+Use `Tab` to toggle selection (or `Ctrl-A` to select all), then `Enter` to
+pick a command (with recent-command history). It's sent + `Enter` to each
+selected pane — e.g. kick off the same `nmap`/`netexec`/update against several
+panes at once.
 
 ## Requirements
 
@@ -91,6 +101,7 @@ Or just add the picker binding to your existing config:
 
 ```tmux
 bind-key s run-shell "~/.config/tmux/picker_popup.sh"
+bind-key B run-shell "~/.config/tmux/broadcast_popup.sh"
 ```
 
 The `picker_popup.sh` wrapper sizes the popup to fit the list (dynamic height
@@ -110,6 +121,8 @@ regardless of terminal transparency.
 | `Ctrl-/` | Toggle preview |
 | `Alt-Up` / `Alt-Down` | Scroll preview |
 | `Esc` / `Ctrl-C` | Exit |
+
+Outside the picker (`<prefix>+B`): broadcast a command to multiple panes.
 
 ## Agent status lights
 

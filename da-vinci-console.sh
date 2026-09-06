@@ -190,10 +190,31 @@ load_agents() {
     done < <(bash "$AGENTS_DIR/agents_state.sh" 2>/dev/null)
 }
 
+# build_header — a live summary row pinned at the top of the picker: brand,
+# live counts (sessions/windows/agents), and a ticking clock. Because the fzf
+# list reloads on every interaction, this header re-renders with fresh data
+# (and <prefix>+r / Ctrl-R inside the picker forces a reload to re-tick).
+build_header() {
+    local nsess nwin nagent now label
+    nsess=$(tmux list-sessions 2>/dev/null | wc -l | tr -d ' ')
+    nwin=$(tmux list-windows -a 2>/dev/null | wc -l | tr -d ' ')
+    nagent=0
+    local k
+    for k in "${!pane_agent[@]}"; do (( nagent++ )); done
+    now=$(date '+%H:%M:%S')
+    label="Da Vinci Console"
+    # Fits the existing divider width; the row itself is a non-selectable sep.
+    printf "${C_GREEN}◈${C_RESET} ${C_WHITE}%s${C_RESET}   ${C_DIM}%s${C_RESET}  ${C_GREY}%ss · %sw · %sa${C_RESET}  ${C_BRIGHT}%s${C_RESET}${SEP}sep:header\n" \
+        "$label" "$(date '+%a %b %d')" "$nsess" "$nwin" "$nagent" "$now"
+}
+
 build_sessions() {
     local first=1 any=0
 
     load_agents
+
+    # Live header: Da Vinci branding + counts + clock, refreshed on each reload.
+    build_header
 
     # zoxide path->score (frecency). Missing/unknown paths score 0, so sessions
     # whose folder zoxide doesn't track sink below the ones you visit most.
@@ -334,6 +355,56 @@ drill_panes() {
     tmux switch-client -t "${sess}:${widx}" 2>/dev/null
 }
 
+# broadcast — multi-select panes, then send one command to all of them.
+# Lists every pane across all sessions; Tab/space to select, Enter to run.
+# Prompts for a command (with history) and sends it + Enter to each selected.
+broadcast() {
+    local sel line cmd tgt hist
+
+    # Build a fzf --multi list: one row per pane across all sessions.
+    # Row format: <active>  <path>  <cmd>  ${SEP}  <sess>:<w>.<p>
+    sel=$(tmux list-panes -a -F \
+        "#{?pane_active,+,\ }|#{pane_current_path}|#{pane_current_command}|#{session_name}|#{window_index}|#{pane_index}" 2>/dev/null \
+        | while IFS='|' read -r act path cmd s w p; do
+            printf '%s  %s  %s${SEP}%s:%s.%s\n' "$act" "$(display_path "$path")" "$cmd" "$s" "$w" "$p"
+        done \
+        | fzf --ansi --multi --layout=reverse --height=100% --no-sort \
+              --pointer='>' --marker='*' --gutter=' ' \
+              --color="$FZF_COLORS" \
+              --delimiter=$'\t|\t' --with-nth=1 \
+              --bind 'tab:toggle-down' \
+              --bind 'ctrl-a:select-all' \
+              --border=rounded \
+              --input-border=rounded \
+              --input-label="$(pill_label 'Broadcast')" --input-label-pos=2 \
+              --list-border=rounded \
+              --list-label="$(pill_label 'Panes (Tab toggles, Ctrl-A all)')" --list-label-pos=2 \
+              --header $'  Enter send  Tab toggle  Ctrl-A all  Esc cancel' \
+              --preview-window hidden 2>/dev/null)
+    [[ -z "$sel" ]] && exit 0
+
+    # History so repeating a command (e.g. an nmap re-run) is a few keystrokes.
+    hist="$HOME/.cache/davinci-broadcast.history"
+    mkdir -p "$(dirname "$hist")"
+    cmd=$(cat "$hist" 2>/dev/null | fzf --no-sort --layout=reverse \
+              --prompt='  Command: ' --color="$FZF_COLORS" \
+              --print-query --query='' --height=40% --border=rounded 2>/dev/null)
+    # fzf --print-query echoes the query even on cancel; strip trailing newline
+    cmd="${cmd%%$'\n'*}"
+    [[ -z "$cmd" ]] && exit 0
+    echo "$cmd" >> "$hist"
+    tail -n 200 "$hist" > "$hist.tmp" 2>/dev/null && mv "$hist.tmp" "$hist"
+
+    printf '\n${C_DIM}Sending to %s pane(s): %s\n' "$(printf '%s\n' "$sel" | grep -c .)" "$cmd"
+    while IFS= read -r line; do
+        tgt="${line##*$'\t|\t'}"   # last field after the SEP delimiter
+        tgt=$(printf '%s' "$tgt" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [[ "$tgt" == *:*.* ]] || continue
+        tmux send-keys -t "$tgt" "$cmd" Enter 2>/dev/null
+    done <<< "$sel"
+    printf '%s' "${C_RESET}"
+}
+
 case "${1:-}" in
     --list)              list_all; exit 0 ;;
     --list-agents)       list_agents; exit 0 ;;
@@ -341,6 +412,7 @@ case "${1:-}" in
     --kill-target)        kill_target "${2:-}"; exit 0 ;;
     --rename)            rename_target "${2:-}"; exit 0 ;;
     --drill-panes)       drill_panes "${2:-}"; exit 0 ;;
+    --broadcast)         broadcast; exit 0 ;;
 esac
 
 read -r -d '' PREVIEW_CMD <<'PREVIEW'
@@ -513,11 +585,12 @@ selected=$(printf '' | fzf \
     --preview-label-pos=2 \
     --padding=0,1 \
     --info=inline-right \
-    --header $'  Enter attach  ^N new  ^R rename  ^D kill  ^/ preview  ^G agents-only  ^T all' \
+    --header $'  Enter attach  ^N new  ^R rename  ^D kill  ^/ preview  ^G agents  ^T all  ^L refresh' \
     --bind "start:reload-sync(bash '$SELF' --list)" \
     --bind 'ctrl-/:toggle-preview' \
     --bind 'ctrl-g:reload-sync(bash '$SELF' --list-agents)' \
     --bind 'ctrl-t:reload-sync(bash '$SELF' --list)' \
+    --bind 'ctrl-l:reload-sync(bash '$SELF' --list)' \
     --bind 'alt-up:preview-up' \
     --bind 'alt-down:preview-down' \
     --bind "enter:transform:[[ {-1} == sep:* ]] && echo ignore || echo accept" \

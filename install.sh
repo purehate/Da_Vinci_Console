@@ -6,6 +6,7 @@ DEST="${1:-$HOME/.config/tmux}"
 SRC="da-vinci-console.sh"
 INSTALLED="sesh_picker.sh"
 WRAPPER="picker_popup.sh"
+BROADCAST="broadcast_popup.sh"
 
 # Hard dependency check: the whole thing is useless without these.
 for cmd in tmux fzf; do
@@ -30,6 +31,11 @@ echo "✓ Installed: $DEST/$INSTALLED"
 cp "$WRAPPER" "$DEST/$WRAPPER"
 chmod +x "$DEST/$WRAPPER"
 echo "✓ Installed: $DEST/$WRAPPER"
+
+# Broadcast popup wrapper (multi-select panes + send one command to all)
+cp "$BROADCAST" "$DEST/$BROADCAST"
+chmod +x "$DEST/$BROADCAST"
+echo "✓ Installed: $DEST/$BROADCAST"
 
 # ── Agents module (herdr-style detection) ──────────────────────────────────
 # window_agent.sh  -> annotates each window pill in the status line
